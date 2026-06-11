@@ -13,12 +13,12 @@ _SENSITIVE_KEY_TOKENS = frozenset(
         "auth",
         "credential",
         "credentials",
-        "hmac",
         "key",
         "password",
         "passwd",
         "private",
         "secret",
+        "signing",
         "signature",
         "token",
     }

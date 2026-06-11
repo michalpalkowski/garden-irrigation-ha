@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import time
 
 DOMAIN = "garden_irrigation"
-PLATFORMS = ["binary_sensor", "button", "number", "sensor", "switch", "time"]
+PLATFORMS = [
+    "binary_sensor",
+    "button",
+    "number",
+    "sensor",
+    "switch",
+    "time",
+    "update",
+]
 
 CONF_BASE_TOPIC = "base_topic"
 CONF_DEVICE_ID = "device_id"

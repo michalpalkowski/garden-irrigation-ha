@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import importlib.util
 import json
 from pathlib import Path
@@ -267,13 +265,14 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
                 }
             )
 
-    def test_ota_hmac_message_matches_firmware_order(self) -> None:
+    def test_ota_signed_manifest_message_matches_firmware_order(self) -> None:
         request = protocol.OtaRequest(
             product="garden-irrigation",
             application="garden-firmware",
             board="xiao-esp32c6",
             chip="esp32c6",
             version="0.1.1",
+            channel="stable",
             host="192.168.1.20",
             port=8000,
             path="/garden.bin",
@@ -281,34 +280,32 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             sha256="4e23fc7f1349beef5b55d33440efca35fccb5ce28db952fd6469ebb84a31ffde",
             challenge="0123456789abcdef0123456789abcdef",
             nonce="20260523T120000",
+            signature="aa" * 64,
         )
 
-        message = protocol.ota_hmac_message(request)
+        message = protocol.ota_signed_manifest_message(request)
 
         self.assertEqual(
             message,
-            "schema=garden-ota-request/v1;"
-            "product=garden-irrigation;"
-            "application=garden-firmware;"
-            "board=xiao-esp32c6;"
-            "chip=esp32c6;"
-            "version=0.1.1;"
-            "host=192.168.1.20;"
-            "port=8000;"
-            "path=/garden.bin;"
-            "size=712976;"
-            "sha256=4e23fc7f1349beef5b55d33440efca35fccb5ce28db952fd6469ebb84a31ffde;"
-            "challenge=0123456789abcdef0123456789abcdef;"
-            "nonce=20260523T120000;",
+            "schema=garden-ota-signed-manifest/v1\n"
+            "product=garden-irrigation\n"
+            "application=garden-firmware\n"
+            "board=xiao-esp32c6\n"
+            "chip=esp32c6\n"
+            "version=0.1.1\n"
+            "channel=stable\n"
+            "size=712976\n"
+            "sha256=4e23fc7f1349beef5b55d33440efca35fccb5ce28db952fd6469ebb84a31ffde\n",
         )
 
-    def test_signs_and_redacts_ota_request(self) -> None:
+    def test_builds_and_redacts_signed_ota_request(self) -> None:
         request = protocol.OtaRequest(
             product="garden-irrigation",
             application="garden-firmware",
             board="xiao-esp32c6",
             chip="esp32c6",
             version="0.1.1",
+            channel="stable",
             host="192.168.1.20",
             port=8000,
             path="/garden.bin",
@@ -316,19 +313,14 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             sha256="4e23fc7f1349beef5b55d33440efca35fccb5ce28db952fd6469ebb84a31ffde",
             challenge="0123456789abcdef0123456789abcdef",
             nonce="20260523T120000",
+            signature="aa" * 64,
         )
-        key_hex = "11" * 32
-        expected = hmac.new(
-            bytes.fromhex(key_hex),
-            protocol.ota_hmac_message(request).encode(),
-            hashlib.sha256,
-        ).hexdigest()
 
-        payload = protocol.sign_ota_request(request, key_hex)
+        payload = protocol.build_ota_request_payload(request)
 
-        self.assertTrue(payload.endswith(f"hmac={expected}"))
-        self.assertIn("hmac=<redacted>", protocol.redact_ota_payload(payload))
-        self.assertNotIn(expected, protocol.redact_ota_payload(payload))
+        self.assertTrue(payload.endswith(f"signature={'aa' * 64}"))
+        self.assertIn("signature=<redacted>", protocol.redact_ota_payload(payload))
+        self.assertNotIn("aa" * 64, protocol.redact_ota_payload(payload))
 
 
 if __name__ == "__main__":

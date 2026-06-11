@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-import hashlib
-import hmac
 import json
 import re
 from typing import Any, Final
@@ -27,6 +25,7 @@ IDENTITY_SCHEMA: Final = "garden-irrigation-device/v1"
 
 _TOPIC_PART_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _HEX_32_RE: Final = re.compile(r"^[0-9a-fA-F]{64}$")
+_ECDSA_P256_SIGNATURE_RE: Final = re.compile(r"^[0-9a-fA-F]{128}$")
 _CHALLENGE_RE: Final = re.compile(r"^[0-9a-fA-F]{32}$")
 _TOKEN_RE: Final = re.compile(r"^[A-Za-z0-9_.-]{1,48}$")
 _HOST_RE: Final = re.compile(r"^[A-Za-z0-9.-]{1,63}$")
@@ -95,13 +94,14 @@ class OtaManifest:
 
 @dataclass(frozen=True)
 class OtaRequest:
-    """Canonical OTA request fields signed for firmware."""
+    """Canonical OTA request fields authenticated for firmware."""
 
     product: str
     application: str
     board: str
     chip: str
     version: str
+    channel: str
     host: str
     port: int
     path: str
@@ -109,6 +109,7 @@ class OtaRequest:
     sha256: str
     challenge: str
     nonce: str
+    signature: str
 
 
 @dataclass(frozen=True)
@@ -705,8 +706,25 @@ def parse_ota_manifest(payload: dict[str, object]) -> OtaManifest:
     )
 
 
-def ota_hmac_message(request: OtaRequest) -> str:
-    """Return the canonical HMAC message used by firmware."""
+def ota_signed_manifest_message(request: OtaRequest) -> str:
+    """Return the canonical signed manifest message used by firmware."""
+    _validate_ota_request(request)
+    fields = (
+        ("schema", "garden-ota-signed-manifest/v1"),
+        ("product", request.product),
+        ("application", request.application),
+        ("board", request.board),
+        ("chip", request.chip),
+        ("version", request.version),
+        ("channel", request.channel),
+        ("size", str(request.size_bytes)),
+        ("sha256", request.sha256.lower()),
+    )
+    return "".join(f"{key}={value}\n" for key, value in fields)
+
+
+def build_ota_request_payload(request: OtaRequest) -> str:
+    """Build a signed OTA request payload for MQTT."""
     _validate_ota_request(request)
     fields = (
         ("schema", OTA_REQUEST_SCHEMA),
@@ -715,6 +733,7 @@ def ota_hmac_message(request: OtaRequest) -> str:
         ("board", request.board),
         ("chip", request.chip),
         ("version", request.version),
+        ("channel", request.channel),
         ("host", request.host),
         ("port", str(request.port)),
         ("path", request.path),
@@ -722,23 +741,14 @@ def ota_hmac_message(request: OtaRequest) -> str:
         ("sha256", request.sha256.lower()),
         ("challenge", request.challenge.lower()),
         ("nonce", request.nonce),
+        ("signature", request.signature.lower()),
     )
-    return ";".join(f"{key}={value}" for key, value in fields) + ";"
-
-
-def sign_ota_request(request: OtaRequest, hmac_key_hex: str) -> str:
-    """Build a signed OTA request payload for MQTT."""
-    key = bytes.fromhex(hmac_key_hex)
-    if len(key) != 32:
-        raise ProtocolError("OTA HMAC key must be 32 bytes")
-    message = ota_hmac_message(request)
-    digest = hmac.new(key, message.encode(), hashlib.sha256).hexdigest()
-    return f"{message}hmac={digest}"
+    return ";".join(f"{key}={value}" for key, value in fields)
 
 
 def redact_ota_payload(payload: str) -> str:
-    """Redact the signature from an OTA request before logging."""
-    return re.sub(r"hmac=[0-9a-fA-F]{64}", "hmac=<redacted>", payload)
+    """Redact the authenticator from an OTA request before logging."""
+    return re.sub(r"signature=[0-9a-fA-F]{128}", "signature=<redacted>", payload)
 
 
 def _parse_positive_int(value: str) -> int:
@@ -777,6 +787,8 @@ def _validate_ota_request(request: OtaRequest) -> None:
         raise ProtocolError("invalid OTA request board")
     if not _TOPIC_PART_RE.fullmatch(request.chip):
         raise ProtocolError("invalid OTA request chip")
+    if request.channel not in {"stable", "beta"}:
+        raise ProtocolError("invalid OTA request channel")
     if not _HOST_RE.fullmatch(request.host):
         raise ProtocolError("invalid OTA request host")
     if not 1 <= request.port <= 65535:
@@ -791,3 +803,5 @@ def _validate_ota_request(request: OtaRequest) -> None:
         raise ProtocolError("invalid OTA challenge")
     if not _TOKEN_RE.fullmatch(request.nonce):
         raise ProtocolError("invalid OTA request nonce")
+    if not _ECDSA_P256_SIGNATURE_RE.fullmatch(request.signature):
+        raise ProtocolError("invalid OTA request signature")

@@ -32,7 +32,7 @@ class GardenIrrigationDiagnosticsTest(unittest.TestCase):
             "wifi_ssid": "garden-wifi",
             "password": "wifi-password",
             "ota": {
-                "hmac_key": "11" * 32,
+                "signing_private_key": "11" * 32,
                 "last_signature": "22" * 32,
                 "nonce": "20260611T101500",
             },
@@ -47,7 +47,7 @@ class GardenIrrigationDiagnosticsTest(unittest.TestCase):
         self.assertEqual(redacted["phase"], "mqtt")
         self.assertEqual(redacted["wifi_ssid"], "garden-wifi")
         self.assertEqual(redacted["password"], redaction.REDACTED_VALUE)
-        self.assertEqual(redacted["ota"]["hmac_key"], redaction.REDACTED_VALUE)
+        self.assertEqual(redacted["ota"]["signing_private_key"], redaction.REDACTED_VALUE)
         self.assertEqual(
             redacted["ota"]["last_signature"], redaction.REDACTED_VALUE
         )
