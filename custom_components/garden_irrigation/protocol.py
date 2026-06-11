@@ -99,6 +99,7 @@ class DeviceIdentity:
     firmware_version: str
     firmware_build: str | None
     protocol_schema: str
+    capabilities: dict[str, object]
 
 
 def normalize_device_id(value: str) -> str:
@@ -134,6 +135,11 @@ def identity_topic(device_id: str) -> str:
     return f"{DEFAULT_TOPIC_PREFIX}/discovery/{normalize_device_id(device_id)}"
 
 
+def runtime_identity_topic(base_topic: str) -> str:
+    """Return the retained runtime identity topic for one controller."""
+    return topic(base_topic, "identity")
+
+
 def parse_identity_payload(payload: dict[str, object]) -> DeviceIdentity:
     """Validate and parse a controller identity payload."""
     if payload.get("schema") != IDENTITY_SCHEMA:
@@ -141,9 +147,9 @@ def parse_identity_payload(payload: dict[str, object]) -> DeviceIdentity:
 
     device_id = normalize_device_id(_required_str(payload, "device_id"))
     base_topic = normalize_base_topic(_required_str(payload, "base_topic"))
-    expected_base_topic = base_topic_from_device_id(device_id)
-    if base_topic != expected_base_topic:
-        raise ProtocolError("identity base topic does not match device ID")
+    capabilities = payload.get("capabilities")
+    if capabilities is not None and not isinstance(capabilities, dict):
+        raise ProtocolError("identity capabilities must be an object")
 
     return DeviceIdentity(
         device_id=device_id,
@@ -155,6 +161,7 @@ def parse_identity_payload(payload: dict[str, object]) -> DeviceIdentity:
         if isinstance(payload.get("firmware_build"), str)
         else None,
         protocol_schema=_required_str(payload, "protocol_schema"),
+        capabilities=capabilities or {},
     )
 
 

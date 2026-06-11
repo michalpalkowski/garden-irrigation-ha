@@ -17,15 +17,30 @@ Home Assistant custom integration for the Garden Irrigation Wi-Fi/MQTT controlle
 6. Restart Home Assistant.
 7. Add the integration from `Settings -> Devices & services -> Add integration`.
 
-## MQTT Base Topic
+## Discovery And Identity
 
-During setup, enter the controller name, for example:
+With firmware `0.4.0` or newer, the controller publishes retained identity to:
+
+```text
+garden/irrigation/discovery/<device_id>
+<base_topic>/identity
+```
+
+Home Assistant can propose the integration automatically when the controller is
+already online on MQTT. Confirm the discovered controller in
+`Settings -> Devices & services`.
+
+For manual setup, enter the stable controller device ID, for example:
 
 ```text
 xiao-esp32c6-1
 ```
 
-The integration builds the default MQTT base topic as `garden/irrigation/<controller-name>`. Use the advanced custom MQTT base topic field only for non-standard firmware builds. The integration validates the topic by waiting for retained controller MQTT state before creating the config entry.
+The integration builds the default runtime MQTT base topic as
+`garden/irrigation/<device_id>`. Use the advanced custom MQTT base topic field
+only when firmware was provisioned with a different base topic. Manual setup
+validates the retained `<base_topic>/identity` payload before creating the
+config entry.
 
 ## Safety
 
@@ -38,6 +53,9 @@ The integration builds the default MQTT base topic as `garden/irrigation/<contro
 - Schedule entities are Home Assistant owned, disabled by default, and use the
   same bounded command path as manual starts.
 - OTA protocol helpers are included, but the Home Assistant update entity is not implemented in this initial release.
+- The controller `device_id`, runtime `base_topic`, board, chip, firmware
+  version, and capabilities come from signed firmware provisioning data exposed
+  as retained MQTT identity.
 
 ## Entities
 
@@ -69,7 +87,7 @@ The repository includes:
 dashboards/garden-irrigation-view.yaml
 ```
 
-It is a Lovelace view template for the default controller name
+It is a Lovelace view template for the example controller name
 `garden-irrigation-wifi`. For a different controller name, replace the generated
 entity ID prefix before importing it.
 
@@ -79,6 +97,8 @@ entity ID prefix before importing it.
 - Weather guard parity from the original project YAML package is not built into
   the integration scheduler yet.
 - OTA update entities are not implemented yet.
+- Runtime Wi-Fi/MQTT provisioning is not implemented in the integration yet;
+  current firmware is still provisioned at build time.
 
 ## Development Checks
 

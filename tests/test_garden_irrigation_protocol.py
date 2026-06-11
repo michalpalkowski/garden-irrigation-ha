@@ -46,6 +46,10 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             protocol.identity_topic("xiao-esp32c6-1"),
             "garden/irrigation/discovery/xiao-esp32c6-1",
         )
+        self.assertEqual(
+            protocol.runtime_identity_topic("garden/irrigation/xiao-esp32c6-1"),
+            "garden/irrigation/xiao-esp32c6-1/identity",
+        )
         with self.assertRaises(protocol.ProtocolError):
             protocol.base_topic_from_device_id("garden/xiao")
 
@@ -60,23 +64,45 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
                 "firmware_version": "0.1.0",
                 "firmware_build": "build-123",
                 "protocol_schema": "garden-irrigation-mqtt/v1",
+                "capabilities": {"zones": 4, "ota": True},
             }
         )
 
         self.assertEqual(identity.device_id, "xiao-esp32c6-1")
         self.assertEqual(identity.base_topic, "garden/irrigation/xiao-esp32c6-1")
+        self.assertEqual(identity.capabilities["zones"], 4)
 
-    def test_rejects_identity_base_topic_mismatch(self) -> None:
+    def test_allows_identity_base_topic_migration(self) -> None:
+        identity = protocol.parse_identity_payload(
+            {
+                "schema": "garden-irrigation-device/v1",
+                "device_id": "xiao-esp32c6-1",
+                "base_topic": "garden/irrigation/customer-a/controller-1",
+                "board": "xiao-esp32c6",
+                "chip": "esp32c6",
+                "firmware_version": "0.1.0",
+                "protocol_schema": "garden-irrigation-mqtt/v1",
+            }
+        )
+
+        self.assertEqual(identity.device_id, "xiao-esp32c6-1")
+        self.assertEqual(
+            identity.base_topic,
+            "garden/irrigation/customer-a/controller-1",
+        )
+
+    def test_rejects_invalid_identity_capabilities(self) -> None:
         with self.assertRaises(protocol.ProtocolError):
             protocol.parse_identity_payload(
                 {
                     "schema": "garden-irrigation-device/v1",
                     "device_id": "xiao-esp32c6-1",
-                    "base_topic": "garden/irrigation/other",
+                    "base_topic": "garden/irrigation/xiao-esp32c6-1",
                     "board": "xiao-esp32c6",
                     "chip": "esp32c6",
                     "firmware_version": "0.1.0",
                     "protocol_schema": "garden-irrigation-mqtt/v1",
+                    "capabilities": ["ota"],
                 }
             )
 

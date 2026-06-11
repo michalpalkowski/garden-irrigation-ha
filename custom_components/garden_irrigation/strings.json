@@ -3,20 +3,27 @@
     "step": {
       "user": {
         "title": "Garden Irrigation",
-        "description": "Connect a Garden Irrigation Wi-Fi/MQTT controller by MQTT base topic.",
+        "description": "Connect a Garden Irrigation Wi-Fi/MQTT controller. If the controller is already online, it should be discovered automatically from its retained identity.",
         "data": {
           "device_id": "Controller name",
           "base_topic": "Advanced: custom MQTT base topic"
         }
+      },
+      "mqtt_confirm": {
+        "title": "Discovered Garden Irrigation controller",
+        "description": "Home Assistant found `{device_id}` on MQTT topic `{base_topic}`. Board: `{board}`. Chip: `{chip}`."
       }
     },
     "error": {
       "invalid_base_topic": "The MQTT base topic is not valid.",
       "invalid_controller": "The controller name or MQTT base topic is not valid.",
-      "controller_not_found": "No Garden Irrigation controller was detected on this MQTT base topic."
+      "controller_not_found": "No retained Garden Irrigation identity was detected on this MQTT base topic.",
+      "identity_mismatch": "The retained controller identity does not match the requested controller name or base topic."
     },
     "abort": {
-      "already_configured": "This Garden Irrigation controller is already configured."
+      "already_configured": "This Garden Irrigation controller is already configured.",
+      "invalid_discovery_payload": "The discovered MQTT identity payload is not valid Garden Irrigation identity.",
+      "discovery_expired": "The discovered controller identity is no longer available. Start discovery again."
     }
   }
 }
