@@ -240,11 +240,16 @@ def parse_zone_state(payload: str) -> ZoneState:
 
 
 def parse_duration_minutes(payload: str) -> int:
-    """Parse a firmware duration in whole minutes."""
+    """Parse a duration in whole minutes."""
     value = _parse_positive_int(payload.strip().removesuffix(".0").removesuffix(".00"))
-    if value > MAX_DURATION_MINUTES:
-        raise ProtocolError(f"duration cannot exceed {MAX_DURATION_MINUTES} minutes")
-    return value
+    return validate_duration_minutes(value)
+
+
+def validate_duration_minutes(minutes: int) -> int:
+    """Validate a public irrigation duration in whole minutes."""
+    if not 1 <= minutes <= MAX_DURATION_MINUTES:
+        raise ProtocolError(f"minutes must be between 1 and {MAX_DURATION_MINUTES}")
+    return minutes
 
 
 def parse_run_seconds(payload: str) -> int:
@@ -252,13 +257,17 @@ def parse_run_seconds(payload: str) -> int:
     return _parse_non_negative_int(payload.strip())
 
 
-def start_zone_publish(base_topic: str, zone: int, duration_seconds: int) -> tuple[str, str, int, bool]:
+def start_zone_publish(
+    base_topic: str, zone: int, duration_seconds: int
+) -> tuple[str, str, int, bool]:
     """Build a safe non-retained start command publish tuple.
 
     The tuple shape is `(topic, payload, qos, retain)`.
     """
     if not 1 <= duration_seconds <= MAX_DURATION_SECONDS:
-        raise ProtocolError(f"duration_seconds must be between 1 and {MAX_DURATION_SECONDS}")
+        raise ProtocolError(
+            f"duration_seconds must be between 1 and {MAX_DURATION_SECONDS}"
+        )
     return (zone_command_topic(base_topic, zone), f"ON:{duration_seconds}", 0, False)
 
 
@@ -272,11 +281,16 @@ def stop_all_publish(base_topic: str) -> tuple[str, str, int, bool]:
     return (command_topic(base_topic), "STOP_ALL", 0, False)
 
 
-def set_duration_publish(base_topic: str, zone: int, minutes: int) -> tuple[str, str, int, bool]:
+def set_duration_publish(
+    base_topic: str, zone: int, minutes: int
+) -> tuple[str, str, int, bool]:
     """Build a safe non-retained duration update publish tuple."""
-    if not 1 <= minutes <= MAX_DURATION_MINUTES:
-        raise ProtocolError(f"minutes must be between 1 and {MAX_DURATION_MINUTES}")
-    return (zone_duration_command_topic(base_topic, zone), str(minutes), 0, False)
+    return (
+        zone_duration_command_topic(base_topic, zone),
+        str(validate_duration_minutes(minutes)),
+        0,
+        False,
+    )
 
 
 def parse_ota_manifest(payload: dict[str, object]) -> OtaManifest:

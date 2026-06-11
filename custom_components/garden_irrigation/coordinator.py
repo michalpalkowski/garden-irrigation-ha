@@ -11,7 +11,12 @@ from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 
-from .const import CONF_BASE_TOPIC, CONF_DEVICE_ID, DEFAULT_ZONE_COUNT
+from .const import (
+    CONF_BASE_TOPIC,
+    CONF_DEVICE_ID,
+    DEFAULT_MANUAL_DURATION_MINUTES,
+    DEFAULT_ZONE_COUNT,
+)
 from . import protocol
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,7 +27,7 @@ class GardenZoneState:
     """In-memory state for one irrigation zone."""
 
     state: protocol.ZoneState | None = None
-    duration_minutes: int | None = None
+    duration_minutes: int = DEFAULT_MANUAL_DURATION_MINUTES
     run_seconds: int | None = None
 
 
@@ -34,7 +39,9 @@ class GardenControllerState:
     controller_state: str | None = None
     diagnostics: str | None = None
     zones: dict[int, GardenZoneState] = field(
-        default_factory=lambda: {zone: GardenZoneState() for zone in range(DEFAULT_ZONE_COUNT)}
+        default_factory=lambda: {
+            zone: GardenZoneState() for zone in range(DEFAULT_ZONE_COUNT)
+        }
     )
 
 
@@ -64,7 +71,6 @@ class GardenIrrigationRuntime:
             topics.extend(
                 [
                     protocol.zone_state_topic(self.base_topic, zone),
-                    protocol.zone_duration_state_topic(self.base_topic, zone),
                     protocol.zone_run_seconds_topic(self.base_topic, zone),
                 ]
             )
@@ -103,7 +109,9 @@ class GardenIrrigationRuntime:
 
     async def async_start_zone(self, zone: int, duration_seconds: int) -> None:
         """Publish a safe bounded zone start command."""
-        await self._async_publish(protocol.start_zone_publish(self.base_topic, zone, duration_seconds))
+        await self._async_publish(
+            protocol.start_zone_publish(self.base_topic, zone, duration_seconds)
+        )
 
     async def async_stop_zone(self, zone: int) -> None:
         """Publish a safe zone stop command."""
@@ -114,8 +122,17 @@ class GardenIrrigationRuntime:
         await self._async_publish(protocol.stop_all_publish(self.base_topic))
 
     async def async_set_duration_minutes(self, zone: int, minutes: int) -> None:
-        """Publish a safe zone duration update."""
-        await self._async_publish(protocol.set_duration_publish(self.base_topic, zone, minutes))
+        """Set the Home Assistant manual start duration for one zone."""
+        self.set_duration_minutes(zone, minutes)
+
+    @callback
+    def set_duration_minutes(self, zone: int, minutes: int) -> None:
+        """Set the local manual start duration for one zone."""
+        zone = protocol.validate_zone(zone)
+        self.state.zones[zone].duration_minutes = protocol.validate_duration_minutes(
+            minutes
+        )
+        self._async_notify_listeners()
 
     async def _async_publish(self, publish: tuple[str, str, int, bool]) -> None:
         topic, payload, qos, retain = publish
@@ -136,7 +153,11 @@ class GardenIrrigationRuntime:
             else:
                 self._handle_zone_message(topic, payload)
         except protocol.ProtocolError as exc:
-            _LOGGER.warning("Ignoring invalid Garden Irrigation MQTT payload on %s: %s", topic, exc)
+            _LOGGER.warning(
+                "Ignoring invalid Garden Irrigation MQTT payload on %s: %s",
+                topic,
+                exc,
+            )
             return
 
         self._async_notify_listeners()
@@ -147,9 +168,6 @@ class GardenIrrigationRuntime:
             zone_state = self.state.zones[zone]
             if topic == protocol.zone_state_topic(self.base_topic, zone):
                 zone_state.state = protocol.parse_zone_state(payload)
-                return
-            if topic == protocol.zone_duration_state_topic(self.base_topic, zone):
-                zone_state.duration_minutes = protocol.parse_duration_minutes(payload)
                 return
             if topic == protocol.zone_run_seconds_topic(self.base_topic, zone):
                 zone_state.run_seconds = protocol.parse_run_seconds(payload)

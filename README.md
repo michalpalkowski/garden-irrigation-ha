@@ -32,15 +32,24 @@ The integration builds the default MQTT base topic as `garden/irrigation/<contro
 - Zone start commands are explicit and bounded, for example `ON:900`.
 - Commands are published with `retain=false`.
 - Firmware remains the safety authority and must close valves locally when runtime expires.
+- Zone duration numbers are Home Assistant manual start durations. The current
+  production Wi-Fi firmware does not publish `zone/N/duration_minutes`; the
+  integration sends the selected value directly as `ON:<seconds>`.
 - OTA protocol helpers are included, but the Home Assistant update entity is not implemented in this initial release.
 
 ## Initial Entities
 
 - Zone switches
-- Zone duration numbers
+- Zone manual duration numbers
 - Stop-all button
 - Controller state and diagnostics sensors
 - Zone state and runtime sensors
+
+## Current Limitations
+
+- The Home Assistant device page is a basic entity page, not the rich Garden dashboard yet.
+- Built-in schedule automations and dashboard installation are planned, but are not part of this release.
+- OTA update entities are not implemented yet.
 
 ## Development Checks
 

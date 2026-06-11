@@ -16,6 +16,7 @@ DEFAULT_PROTOCOL_SCHEMA = "garden-irrigation-mqtt/v1"
 DEFAULT_BOARD = "xiao-esp32c6"
 DEFAULT_CHIP = "esp32c6"
 DEFAULT_ZONE_COUNT = 4
+DEFAULT_MANUAL_DURATION_MINUTES = 15
 
 MANUFACTURER = "home-automations"
 MODEL = "Garden Irrigation Wi-Fi"
