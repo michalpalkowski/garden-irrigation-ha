@@ -22,13 +22,19 @@ async def async_setup_entry(
 ) -> None:
     """Set up Garden Irrigation number entities."""
     runtime: GardenIrrigationRuntime = entry.runtime_data
-    async_add_entities(
-        [GardenZoneDurationNumber(runtime, zone) for zone in range(DEFAULT_ZONE_COUNT)]
-    )
+    entities: list[NumberEntity] = []
+    for zone in range(DEFAULT_ZONE_COUNT):
+        entities.extend(
+            [
+                GardenZoneDurationNumber(runtime, zone, "manual"),
+                GardenZoneDurationNumber(runtime, zone, "scheduled"),
+            ]
+        )
+    async_add_entities(entities)
 
 
 class GardenZoneDurationNumber(GardenIrrigationEntity, NumberEntity, RestoreEntity):
-    """Home Assistant manual start duration for one zone."""
+    """Home Assistant start duration setting for one zone."""
 
     _attr_icon = "mdi:timer-outline"
     _attr_native_min_value = 1
@@ -37,16 +43,35 @@ class GardenZoneDurationNumber(GardenIrrigationEntity, NumberEntity, RestoreEnti
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_mode = "slider"
 
-    def __init__(self, runtime: GardenIrrigationRuntime, zone: int) -> None:
+    def __init__(self, runtime: GardenIrrigationRuntime, zone: int, kind: str) -> None:
         """Initialize a zone duration number."""
-        super().__init__(runtime, f"zone_{zone}_duration_minutes")
+        key = (
+            f"zone_{zone}_duration_minutes"
+            if kind == "manual"
+            else f"zone_{zone}_scheduled_duration_minutes"
+        )
+        super().__init__(runtime, key)
         self.zone = zone
-        self._attr_name = f"Zone {zone} manual duration"
+        self.kind = kind
+        self._attr_name = f"Zone {zone} {kind} duration"
+        self._attr_icon = (
+            "mdi:timer-play-outline"
+            if kind == "manual"
+            else "mdi:timer-cog-outline"
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return whether the HA-owned setting is available."""
+        return True
 
     @property
     def native_value(self) -> int:
         """Return the current duration in minutes."""
-        return self.runtime.state.zones[self.zone].duration_minutes
+        zone_state = self.runtime.state.zones[self.zone]
+        if self.kind == "manual":
+            return zone_state.manual_duration_minutes
+        return zone_state.scheduled_duration_minutes
 
     async def async_added_to_hass(self) -> None:
         """Restore the last manual duration after Home Assistant restart."""
@@ -56,12 +81,18 @@ class GardenZoneDurationNumber(GardenIrrigationEntity, NumberEntity, RestoreEnti
             return
 
         try:
-            self.runtime.set_duration_minutes(
-                self.zone, parse_duration_minutes(last_state.state)
-            )
+            value = parse_duration_minutes(last_state.state)
         except ProtocolError:
             return
+        self._set_runtime_value(value)
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set the Home Assistant manual duration in minutes."""
-        await self.runtime.async_set_duration_minutes(self.zone, int(value))
+        """Set the Home Assistant duration in minutes."""
+        self._set_runtime_value(int(value))
+
+    def _set_runtime_value(self, value: int) -> None:
+        """Set the matching runtime duration."""
+        if self.kind == "manual":
+            self.runtime.set_manual_duration_minutes(self.zone, value)
+        else:
+            self.runtime.set_scheduled_duration_minutes(self.zone, value)

@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
 import hmac
+import json
 import re
-from typing import Final
+from typing import Any, Final
 
 OTA_REQUEST_SCHEMA: Final = "garden-ota-request/v1"
 OTA_MANIFEST_SCHEMA: Final = "garden-ota-manifest/v1"
@@ -188,6 +189,16 @@ def diagnostics_topic(base_topic: str) -> str:
     return topic(base_topic, "diagnostics")
 
 
+def network_status_topic(base_topic: str) -> str:
+    """Return the controller network status topic."""
+    return topic(base_topic, "network/status")
+
+
+def wifi_signal_topic(base_topic: str) -> str:
+    """Return the controller Wi-Fi RSSI topic."""
+    return topic(base_topic, "wifi/rssi")
+
+
 def command_topic(base_topic: str) -> str:
     """Return the controller command topic."""
     return topic(base_topic, "command")
@@ -255,6 +266,45 @@ def validate_duration_minutes(minutes: int) -> int:
 def parse_run_seconds(payload: str) -> int:
     """Parse a zone runtime counter."""
     return _parse_non_negative_int(payload.strip())
+
+
+def parse_wifi_rssi(payload: str) -> int:
+    """Parse Wi-Fi RSSI in dBm."""
+    value = payload.strip()
+    if not value.removeprefix("-").isdecimal():
+        raise ProtocolError("wifi RSSI must be an integer")
+    rssi = int(value)
+    if not -127 <= rssi <= 0:
+        raise ProtocolError("wifi RSSI is outside plausible dBm range")
+    return rssi
+
+
+def parse_network_status(payload: str) -> dict[str, Any]:
+    """Parse the firmware network status JSON payload."""
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ProtocolError("network status must be JSON") from exc
+    if not isinstance(parsed, dict):
+        raise ProtocolError("network status must be an object")
+    return parsed
+
+
+def wifi_quality_percent(rssi: int) -> int:
+    """Map RSSI dBm to a bounded user-facing quality percentage."""
+    clamped = min(max(rssi, -90), -50)
+    return round((clamped + 90) * 2.5)
+
+
+def wifi_status_label(rssi: int) -> str:
+    """Return a human-readable Wi-Fi quality label."""
+    if rssi >= -60:
+        return "excellent"
+    if rssi >= -67:
+        return "good"
+    if rssi >= -75:
+        return "fair"
+    return "weak"
 
 
 def start_zone_publish(

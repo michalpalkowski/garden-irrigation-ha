@@ -4,17 +4,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_ZONE_COUNT
 from .coordinator import GardenIrrigationRuntime
 from .entity import GardenIrrigationEntity
+from .protocol import wifi_quality_percent, wifi_status_label
 
 
 @dataclass(frozen=True)
@@ -23,10 +30,14 @@ class GardenSensorDescription:
 
     key: str
     name: str
-    value_fn: Callable[[GardenIrrigationRuntime], str | int | None]
+    value_fn: Callable[[GardenIrrigationRuntime], str | int | float | None]
+    attrs_fn: Callable[[GardenIrrigationRuntime], dict[str, Any]] | None = None
     icon: str | None = None
     unit: str | None = None
+    device_class: SensorDeviceClass | None = None
+    state_class: SensorStateClass | None = None
     entity_category: EntityCategory | None = None
+    always_available: bool = False
 
 
 async def async_setup_entry(
@@ -54,6 +65,83 @@ async def async_setup_entry(
                 value_fn=lambda item: item.state.diagnostics,
                 icon="mdi:message-alert-outline",
                 entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="network_status",
+                name="Network status",
+                value_fn=_network_status_value,
+                attrs_fn=lambda item: item.state.network_status or {},
+                icon="mdi:lan-connect",
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="wifi_signal",
+                name="Wi-Fi signal",
+                value_fn=lambda item: item.state.wifi_rssi,
+                icon="mdi:wifi",
+                unit="dBm",
+                device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="wifi_quality",
+                name="Wi-Fi quality",
+                value_fn=lambda item: (
+                    wifi_quality_percent(item.state.wifi_rssi)
+                    if item.state.wifi_rssi is not None
+                    else None
+                ),
+                attrs_fn=lambda item: {
+                    "rssi_dbm": item.state.wifi_rssi,
+                    "quality_label": wifi_status_label(item.state.wifi_rssi)
+                    if item.state.wifi_rssi is not None
+                    else None,
+                },
+                icon="mdi:wifi-strength-3",
+                unit=PERCENTAGE,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="wifi_status",
+                name="Wi-Fi status",
+                value_fn=lambda item: (
+                    wifi_status_label(item.state.wifi_rssi)
+                    if item.state.wifi_rssi is not None
+                    else None
+                ),
+                attrs_fn=lambda item: {
+                    "rssi_dbm": item.state.wifi_rssi,
+                    "quality_percent": wifi_quality_percent(item.state.wifi_rssi)
+                    if item.state.wifi_rssi is not None
+                    else None,
+                },
+                icon="mdi:wifi",
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="next_watering",
+                name="Next watering",
+                value_fn=lambda item: item.next_watering_state(dt_util.now()),
+                attrs_fn=lambda item: item.next_watering_attributes(dt_util.now()),
+                icon="mdi:calendar-clock",
+                always_available=True,
             ),
         ),
     ]
@@ -84,6 +172,24 @@ async def async_setup_entry(
                         ].run_seconds,
                         icon="mdi:timer-sync-outline",
                         unit=UnitOfTime.SECONDS,
+                        device_class=SensorDeviceClass.DURATION,
+                        state_class=SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ),
+                GardenRuntimeSensor(
+                    runtime,
+                    GardenSensorDescription(
+                        key=f"zone_{zone}_run_minutes",
+                        name=f"Zone {zone} run minutes",
+                        value_fn=lambda item, zone=zone: (
+                            round(item.state.zones[zone].run_seconds / 60, 3)
+                            if item.state.zones[zone].run_seconds is not None
+                            else None
+                        ),
+                        icon="mdi:timer-outline",
+                        unit=UnitOfTime.MINUTES,
+                        device_class=SensorDeviceClass.DURATION,
+                        state_class=SensorStateClass.TOTAL_INCREASING,
                     ),
                 ),
             ]
@@ -106,9 +212,37 @@ class GardenRuntimeSensor(GardenIrrigationEntity, SensorEntity):
         self._attr_name = description.name
         self._attr_icon = description.icon
         self._attr_native_unit_of_measurement = description.unit
+        self._attr_device_class = description.device_class
+        self._attr_state_class = description.state_class
         self._attr_entity_category = description.entity_category
 
     @property
-    def native_value(self) -> str | int | None:
+    def available(self) -> bool:
+        """Return entity availability."""
+        if self.entity_description.always_available:
+            return True
+        return super().available
+
+    @property
+    def native_value(self) -> str | int | float | None:
         """Return the current sensor value."""
         return self.entity_description.value_fn(self.runtime)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional dashboard attributes."""
+        if self.entity_description.attrs_fn is None:
+            return None
+        return self.entity_description.attrs_fn(self.runtime)
+
+
+def _network_status_value(runtime: GardenIrrigationRuntime) -> str | None:
+    """Return a compact network status state."""
+    status = runtime.state.network_status
+    if status is None:
+        return None
+    for key in ("reason", "phase", "status"):
+        value = status.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return "online"

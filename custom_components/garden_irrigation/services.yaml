@@ -1,0 +1,78 @@
+start_zone:
+  name: Start irrigation zone
+  description: Start one Garden Irrigation zone for a bounded duration.
+  fields:
+    device_id:
+      name: Controller name
+      description: Optional Garden controller name, for example xiao-esp32c6-1.
+      required: false
+      selector:
+        text:
+    entry_id:
+      name: Config entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false
+      selector:
+        text:
+    zone:
+      name: Zone
+      description: Zero-based irrigation zone index.
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 3
+          mode: box
+    duration_minutes:
+      name: Duration
+      description: Duration in minutes.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 60
+          mode: slider
+          unit_of_measurement: min
+
+stop_zone:
+  name: Stop irrigation zone
+  description: Stop one Garden Irrigation zone.
+  fields:
+    device_id:
+      name: Controller name
+      description: Optional Garden controller name, for example xiao-esp32c6-1.
+      required: false
+      selector:
+        text:
+    entry_id:
+      name: Config entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false
+      selector:
+        text:
+    zone:
+      name: Zone
+      description: Zero-based irrigation zone index.
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 3
+          mode: box
+
+stop_all:
+  name: Stop all irrigation
+  description: Stop all Garden Irrigation zones immediately.
+  fields:
+    device_id:
+      name: Controller name
+      description: Optional Garden controller name, for example xiao-esp32c6-1.
+      required: false
+      selector:
+        text:
+    entry_id:
+      name: Config entry ID
+      description: Optional Home Assistant config entry ID.
+      required: false
+      selector:
+        text:

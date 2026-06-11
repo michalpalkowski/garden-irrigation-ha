@@ -35,20 +35,49 @@ The integration builds the default MQTT base topic as `garden/irrigation/<contro
 - Zone duration numbers are Home Assistant manual start durations. The current
   production Wi-Fi firmware does not publish `zone/N/duration_minutes`; the
   integration sends the selected value directly as `ON:<seconds>`.
+- Schedule entities are Home Assistant owned, disabled by default, and use the
+  same bounded command path as manual starts.
 - OTA protocol helpers are included, but the Home Assistant update entity is not implemented in this initial release.
 
-## Initial Entities
+## Entities
 
 - Zone switches
 - Zone manual duration numbers
+- Zone scheduled duration numbers
+- Zone schedule enabled switches
+- Zone weekday switches
+- Zone schedule time entities
+- MQTT availability binary sensor
 - Stop-all button
-- Controller state and diagnostics sensors
-- Zone state and runtime sensors
+- Controller state, diagnostics, network, Wi-Fi, plan, zone state, and runtime sensors
+
+## Services
+
+- `garden_irrigation.start_zone`
+- `garden_irrigation.stop_zone`
+- `garden_irrigation.stop_all`
+
+When only one controller is configured, services can be called without
+`device_id` or `entry_id`. With multiple controllers, pass the controller name
+as `device_id`.
+
+## Dashboard Template
+
+The repository includes:
+
+```text
+dashboards/garden-irrigation-view.yaml
+```
+
+It is a Lovelace view template for the default controller name
+`garden-irrigation-wifi`. For a different controller name, replace the generated
+entity ID prefix before importing it.
 
 ## Current Limitations
 
-- The Home Assistant device page is a basic entity page, not the rich Garden dashboard yet.
-- Built-in schedule automations and dashboard installation are planned, but are not part of this release.
+- The integration does not automatically edit Home Assistant storage dashboards.
+- Weather guard parity from the original project YAML package is not built into
+  the integration scheduler yet.
 - OTA update entities are not implemented yet.
 
 ## Development Checks

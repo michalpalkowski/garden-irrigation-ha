@@ -92,6 +92,14 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             "garden/irrigation/xiao-1/zone/2/command",
         )
         self.assertEqual(
+            protocol.network_status_topic(base),
+            "garden/irrigation/xiao-1/network/status",
+        )
+        self.assertEqual(
+            protocol.wifi_signal_topic(base),
+            "garden/irrigation/xiao-1/wifi/rssi",
+        )
+        self.assertEqual(
             protocol.zone_duration_command_topic(base, 2),
             "garden/irrigation/xiao-1/zone/2/duration_minutes/set",
         )
@@ -111,6 +119,24 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             protocol.parse_availability("up")
         with self.assertRaises(protocol.ProtocolError):
             protocol.parse_zone_state("running")
+
+    def test_parses_diagnostic_payloads(self) -> None:
+        self.assertEqual(protocol.parse_wifi_rssi("-63"), -63)
+        self.assertEqual(protocol.wifi_quality_percent(-63), 68)
+        self.assertEqual(protocol.wifi_status_label(-63), "good")
+
+        status = protocol.parse_network_status(
+            '{"phase":"mqtt","reason":"connected","uptime_seconds":42}'
+        )
+        self.assertEqual(status["reason"], "connected")
+
+        for invalid in ("abc", "-200", "1.5"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(protocol.ProtocolError):
+                    protocol.parse_wifi_rssi(invalid)
+
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_network_status("not-json")
 
     def test_publish_helpers_never_retain_commands(self) -> None:
         base = "garden/irrigation/xiao-1"
