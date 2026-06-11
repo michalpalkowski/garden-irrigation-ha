@@ -1,0 +1,10 @@
+{
+  "schema": "garden-irrigation-claim-info/v1",
+  "factory_id": "gi-c6-01HZX7M2P9F6T2Q1MZ4K8C3A",
+  "board": "xiao-esp32c6",
+  "chip": "esp32c6",
+  "firmware_version": "0.2.0",
+  "firmware_build": "claim-dev-123",
+  "transports": ["usb_serial", "ble"],
+  "expires_in_seconds": 300
+}

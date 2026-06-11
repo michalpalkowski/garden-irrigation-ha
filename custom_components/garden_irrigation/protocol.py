@@ -14,6 +14,10 @@ OTA_REQUEST_SCHEMA: Final = "garden-ota-request/v1"
 OTA_MANIFEST_SCHEMA: Final = "garden-ota-manifest/v1"
 OTA_PRODUCT: Final = "garden-irrigation"
 OTA_APPLICATION: Final = "garden-firmware"
+CLAIM_INFO_SCHEMA: Final = "garden-irrigation-claim-info/v1"
+CLAIM_REQUEST_SCHEMA: Final = "garden-irrigation-claim/v1"
+CLAIM_RESULT_SCHEMA: Final = "garden-irrigation-claim-result/v1"
+PROVISIONING_SCHEMA: Final = "garden-irrigation-provisioning/v1"
 
 MAX_ZONES: Final = 4
 MAX_DURATION_MINUTES: Final = 60
@@ -27,6 +31,9 @@ _CHALLENGE_RE: Final = re.compile(r"^[0-9a-fA-F]{32}$")
 _TOKEN_RE: Final = re.compile(r"^[A-Za-z0-9_.-]{1,48}$")
 _HOST_RE: Final = re.compile(r"^[A-Za-z0-9.-]{1,63}$")
 _PATH_RE: Final = re.compile(r"^/[A-Za-z0-9/._%:-]{1,95}$")
+_FACTORY_ID_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{5,63}$")
+_PAIRING_CODE_RE: Final = re.compile(r"^[A-Z0-9][A-Z0-9-]{5,31}$")
+_SSID_RE: Final = re.compile(r"^[^\x00-\x1f\x7f]{1,32}$")
 
 
 class ProtocolError(ValueError):
@@ -47,6 +54,22 @@ class ZoneState(StrEnum):
     WATERING = "watering"
     SKIPPED = "skipped"
     FAULT = "fault"
+
+
+class ClaimTransport(StrEnum):
+    """Supported controller claim transports."""
+
+    USB_SERIAL = "usb_serial"
+    BLE = "ble"
+    SOFTAP = "softap"
+
+
+class ClaimResultStatus(StrEnum):
+    """Provisioning result status from firmware."""
+
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    REBOOTING = "rebooting"
 
 
 @dataclass(frozen=True)
@@ -100,6 +123,63 @@ class DeviceIdentity:
     firmware_build: str | None
     protocol_schema: str
     capabilities: dict[str, object]
+
+
+@dataclass(frozen=True)
+class ClaimInfo:
+    """Validated pairing-mode advertisement from an unclaimed controller."""
+
+    factory_id: str
+    board: str
+    chip: str
+    firmware_version: str
+    firmware_build: str | None
+    transports: tuple[ClaimTransport, ...]
+    expires_in_seconds: int
+
+
+@dataclass(frozen=True)
+class ClaimWifiCredentials:
+    """Wi-Fi credentials supplied during device claim."""
+
+    ssid: str
+    password: str
+
+
+@dataclass(frozen=True)
+class ClaimMqttCredentials:
+    """MQTT runtime credentials supplied during device claim."""
+
+    host: str
+    port: int
+    username: str
+    password: str
+    discovery_prefix: str
+
+
+@dataclass(frozen=True)
+class ClaimRequest:
+    """Validated claim payload sent from Home Assistant to pairing firmware."""
+
+    factory_id: str
+    pairing_code: str
+    device_id: str
+    base_topic: str
+    mqtt_client_id: str
+    wifi: ClaimWifiCredentials
+    mqtt: ClaimMqttCredentials
+    nonce: str
+
+
+@dataclass(frozen=True)
+class ClaimResult:
+    """Validated claim result returned by firmware."""
+
+    factory_id: str
+    status: ClaimResultStatus
+    device_id: str | None
+    base_topic: str | None
+    reason: str | None
 
 
 def normalize_device_id(value: str) -> str:
@@ -163,6 +243,240 @@ def parse_identity_payload(payload: dict[str, object]) -> DeviceIdentity:
         protocol_schema=_required_str(payload, "protocol_schema"),
         capabilities=capabilities or {},
     )
+
+
+def parse_claim_info_payload(payload: dict[str, object]) -> ClaimInfo:
+    """Validate and parse pairing-mode claim info from firmware."""
+    if payload.get("schema") != CLAIM_INFO_SCHEMA:
+        raise ProtocolError("unsupported claim info schema")
+
+    transports_payload = payload.get("transports")
+    if not isinstance(transports_payload, list) or not transports_payload:
+        raise ProtocolError("claim transports must be a non-empty list")
+
+    transports: list[ClaimTransport] = []
+    for item in transports_payload:
+        if not isinstance(item, str):
+            raise ProtocolError("claim transport must be a string")
+        try:
+            transports.append(ClaimTransport(item))
+        except ValueError as exc:
+            raise ProtocolError("unsupported claim transport") from exc
+
+    expires_in_seconds = _required_int(payload, "expires_in_seconds")
+    if not 30 <= expires_in_seconds <= 900:
+        raise ProtocolError("claim expiry must be between 30 and 900 seconds")
+
+    firmware_build = payload.get("firmware_build")
+    return ClaimInfo(
+        factory_id=validate_factory_id(_required_str(payload, "factory_id")),
+        board=_required_str(payload, "board"),
+        chip=_required_str(payload, "chip"),
+        firmware_version=_required_str(payload, "firmware_version"),
+        firmware_build=firmware_build if isinstance(firmware_build, str) else None,
+        transports=tuple(transports),
+        expires_in_seconds=expires_in_seconds,
+    )
+
+
+def parse_claim_request_payload(payload: dict[str, object]) -> ClaimRequest:
+    """Validate and parse a Home Assistant assisted claim request."""
+    if payload.get("schema") != CLAIM_REQUEST_SCHEMA:
+        raise ProtocolError("unsupported claim request schema")
+
+    wifi_payload = payload.get("wifi")
+    mqtt_payload = payload.get("mqtt")
+    if not isinstance(wifi_payload, dict):
+        raise ProtocolError("claim Wi-Fi credentials are required")
+    if not isinstance(mqtt_payload, dict):
+        raise ProtocolError("claim MQTT credentials are required")
+
+    device_id = normalize_device_id(_required_str(payload, "device_id"))
+    base_topic = normalize_base_topic(_required_str(payload, "base_topic"))
+    mqtt_client_id = validate_mqtt_client_id(_required_str(payload, "mqtt_client_id"))
+    if base_topic != base_topic_from_device_id(device_id):
+        raise ProtocolError("claim base topic must match device ID")
+
+    return ClaimRequest(
+        factory_id=validate_factory_id(_required_str(payload, "factory_id")),
+        pairing_code=validate_pairing_code(_required_str(payload, "pairing_code")),
+        device_id=device_id,
+        base_topic=base_topic,
+        mqtt_client_id=mqtt_client_id,
+        wifi=ClaimWifiCredentials(
+            ssid=validate_wifi_ssid(_required_str(wifi_payload, "ssid")),
+            password=validate_wifi_password(_required_str(wifi_payload, "password")),
+        ),
+        mqtt=ClaimMqttCredentials(
+            host=validate_host(_required_str(mqtt_payload, "host")),
+            port=validate_port(_required_int(mqtt_payload, "port")),
+            username=validate_mqtt_username(_required_str(mqtt_payload, "username")),
+            password=validate_mqtt_password(_required_str(mqtt_payload, "password")),
+            discovery_prefix=normalize_base_topic(
+                _required_str(mqtt_payload, "discovery_prefix")
+            ),
+        ),
+        nonce=validate_claim_nonce(_required_str(payload, "nonce")),
+    )
+
+
+def parse_claim_result_payload(payload: dict[str, object]) -> ClaimResult:
+    """Validate and parse firmware's response to a claim request."""
+    if payload.get("schema") != CLAIM_RESULT_SCHEMA:
+        raise ProtocolError("unsupported claim result schema")
+
+    try:
+        status = ClaimResultStatus(_required_str(payload, "status"))
+    except ValueError as exc:
+        raise ProtocolError("unsupported claim result status") from exc
+
+    device_id_payload = payload.get("device_id")
+    base_topic_payload = payload.get("base_topic")
+    device_id = (
+        normalize_device_id(device_id_payload) if isinstance(device_id_payload, str) else None
+    )
+    base_topic = (
+        normalize_base_topic(base_topic_payload)
+        if isinstance(base_topic_payload, str)
+        else None
+    )
+    if status in {ClaimResultStatus.ACCEPTED, ClaimResultStatus.REBOOTING}:
+        if device_id is None or base_topic is None:
+            raise ProtocolError("accepted claim result must include identity")
+        if base_topic != base_topic_from_device_id(device_id):
+            raise ProtocolError("claim result base topic must match device ID")
+
+    reason = payload.get("reason")
+    return ClaimResult(
+        factory_id=validate_factory_id(_required_str(payload, "factory_id")),
+        status=status,
+        device_id=device_id,
+        base_topic=base_topic,
+        reason=reason if isinstance(reason, str) else None,
+    )
+
+
+def build_claim_request_payload(request: ClaimRequest) -> dict[str, object]:
+    """Build a JSON-serializable claim request payload."""
+    return {
+        "schema": CLAIM_REQUEST_SCHEMA,
+        "factory_id": validate_factory_id(request.factory_id),
+        "pairing_code": validate_pairing_code(request.pairing_code),
+        "device_id": normalize_device_id(request.device_id),
+        "base_topic": normalize_base_topic(request.base_topic),
+        "mqtt_client_id": validate_mqtt_client_id(request.mqtt_client_id),
+        "wifi": {
+            "ssid": validate_wifi_ssid(request.wifi.ssid),
+            "password": validate_wifi_password(request.wifi.password),
+        },
+        "mqtt": {
+            "host": validate_host(request.mqtt.host),
+            "port": validate_port(request.mqtt.port),
+            "username": validate_mqtt_username(request.mqtt.username),
+            "password": validate_mqtt_password(request.mqtt.password),
+            "discovery_prefix": normalize_base_topic(request.mqtt.discovery_prefix),
+        },
+        "nonce": validate_claim_nonce(request.nonce),
+    }
+
+
+def redact_claim_payload(payload: dict[str, object]) -> dict[str, object]:
+    """Redact claim payload secrets before diagnostics or logs."""
+    redacted = dict(payload)
+    wifi = redacted.get("wifi")
+    if isinstance(wifi, dict):
+        redacted["wifi"] = {**wifi, "password": "<redacted>"}
+    mqtt = redacted.get("mqtt")
+    if isinstance(mqtt, dict):
+        redacted["mqtt"] = {**mqtt, "password": "<redacted>"}
+    if "pairing_code" in redacted:
+        redacted["pairing_code"] = "<redacted>"
+    return redacted
+
+
+def validate_factory_id(value: str) -> str:
+    """Validate a factory-assigned device identity."""
+    factory_id = value.strip()
+    if not _FACTORY_ID_RE.fullmatch(factory_id):
+        raise ProtocolError("invalid factory ID")
+    return factory_id
+
+
+def validate_pairing_code(value: str) -> str:
+    """Validate a proof-of-possession pairing code."""
+    pairing_code = value.strip().upper()
+    if not _PAIRING_CODE_RE.fullmatch(pairing_code):
+        raise ProtocolError("invalid pairing code")
+    return pairing_code
+
+
+def validate_mqtt_client_id(value: str) -> str:
+    """Validate a client ID used only for the MQTT session."""
+    return normalize_device_id(value)
+
+
+def validate_wifi_ssid(value: str) -> str:
+    """Validate a Wi-Fi SSID for provisioning."""
+    ssid = value.strip()
+    if not _SSID_RE.fullmatch(ssid):
+        raise ProtocolError("invalid Wi-Fi SSID")
+    return ssid
+
+
+def validate_wifi_password(value: str) -> str:
+    """Validate a WPA/WPA2 personal Wi-Fi password."""
+    password = value.strip()
+    if not 8 <= len(password) <= 63:
+        raise ProtocolError("Wi-Fi password must be 8 to 63 characters")
+    if any(ord(char) < 32 or ord(char) == 127 for char in password):
+        raise ProtocolError("Wi-Fi password contains invalid control characters")
+    return password
+
+
+def validate_host(value: str) -> str:
+    """Validate a local broker host name or IPv4-like address."""
+    host = value.strip()
+    if not host or len(host) > 253:
+        raise ProtocolError("invalid host")
+    labels = host.split(".")
+    if any(not _HOST_RE.fullmatch(label) for label in labels):
+        raise ProtocolError("invalid host")
+    return host
+
+
+def validate_port(value: int) -> int:
+    """Validate a TCP port."""
+    if not 1 <= value <= 65535:
+        raise ProtocolError("invalid port")
+    return value
+
+
+def validate_mqtt_username(value: str) -> str:
+    """Validate a provisioned MQTT username."""
+    username = value.strip()
+    if not 1 <= len(username) <= 128:
+        raise ProtocolError("invalid MQTT username")
+    if any(ord(char) < 32 or ord(char) == 127 for char in username):
+        raise ProtocolError("MQTT username contains invalid control characters")
+    return username
+
+
+def validate_mqtt_password(value: str) -> str:
+    """Validate a provisioned MQTT password."""
+    password = value.strip()
+    if not 1 <= len(password) <= 256:
+        raise ProtocolError("invalid MQTT password")
+    if any(ord(char) < 32 or ord(char) == 127 for char in password):
+        raise ProtocolError("MQTT password contains invalid control characters")
+    return password
+
+
+def validate_claim_nonce(value: str) -> str:
+    """Validate a short anti-replay nonce for a claim request."""
+    nonce = value.strip()
+    if not _TOKEN_RE.fullmatch(nonce):
+        raise ProtocolError("invalid claim nonce")
+    return nonce
 
 
 def validate_zone(zone: int) -> int:

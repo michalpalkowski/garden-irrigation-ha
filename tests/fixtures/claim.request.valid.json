@@ -1,0 +1,20 @@
+{
+  "schema": "garden-irrigation-claim/v1",
+  "factory_id": "gi-c6-01HZX7M2P9F6T2Q1MZ4K8C3A",
+  "pairing_code": "7K4P-92QX",
+  "device_id": "garden-irrigation-a1b2c3",
+  "base_topic": "garden/irrigation/garden-irrigation-a1b2c3",
+  "mqtt_client_id": "garden-irrigation-a1b2c3",
+  "wifi": {
+    "ssid": "Home-IoT",
+    "password": "wifi-password"
+  },
+  "mqtt": {
+    "host": "homeassistant.local",
+    "port": 1883,
+    "username": "garden_irrigation_a1b2c3",
+    "password": "mqtt-password",
+    "discovery_prefix": "homeassistant"
+  },
+  "nonce": "claim-20260611-091500"
+}

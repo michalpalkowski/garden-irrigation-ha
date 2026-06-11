@@ -1,0 +1,7 @@
+{
+  "schema": "garden-irrigation-claim-result/v1",
+  "factory_id": "gi-c6-01HZX7M2P9F6T2Q1MZ4K8C3A",
+  "status": "accepted",
+  "device_id": "garden-irrigation-a1b2c3",
+  "base_topic": "garden/irrigation/garden-irrigation-a1b2c3"
+}

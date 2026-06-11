@@ -84,6 +84,55 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
                 _load_fixture("identity.invalid_capabilities.json")
             )
 
+    def test_parses_claim_info_payload(self) -> None:
+        info = protocol.parse_claim_info_payload(_load_fixture("claim.info.valid.json"))
+
+        self.assertEqual(info.factory_id, "gi-c6-01HZX7M2P9F6T2Q1MZ4K8C3A")
+        self.assertEqual(info.board, "xiao-esp32c6")
+        self.assertIn(protocol.ClaimTransport.BLE, info.transports)
+        self.assertEqual(info.expires_in_seconds, 300)
+
+    def test_parses_and_redacts_claim_request_payload(self) -> None:
+        payload = _load_fixture("claim.request.valid.json")
+
+        request = protocol.parse_claim_request_payload(payload)
+        rebuilt = protocol.build_claim_request_payload(request)
+        redacted = protocol.redact_claim_payload(rebuilt)
+
+        self.assertEqual(request.device_id, "garden-irrigation-a1b2c3")
+        self.assertEqual(request.mqtt.host, "homeassistant.local")
+        self.assertEqual(request.wifi.ssid, "Home-IoT")
+        self.assertEqual(rebuilt["base_topic"], payload["base_topic"])
+        self.assertEqual(redacted["pairing_code"], "<redacted>")
+        self.assertEqual(redacted["wifi"]["password"], "<redacted>")
+        self.assertEqual(redacted["mqtt"]["password"], "<redacted>")
+
+    def test_rejects_claim_topic_that_does_not_match_device_id(self) -> None:
+        payload = _load_fixture("claim.request.valid.json")
+        payload["base_topic"] = "garden/irrigation/other-controller"
+
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_claim_request_payload(payload)
+
+    def test_rejects_weak_claim_credentials(self) -> None:
+        payload = _load_fixture("claim.request.valid.json")
+        payload["pairing_code"] = "123"
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_claim_request_payload(payload)
+
+        payload = _load_fixture("claim.request.valid.json")
+        payload["wifi"]["password"] = "short"
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_claim_request_payload(payload)
+
+    def test_parses_claim_result_payload(self) -> None:
+        result = protocol.parse_claim_result_payload(
+            _load_fixture("claim.result.accepted.json")
+        )
+
+        self.assertEqual(result.status, protocol.ClaimResultStatus.ACCEPTED)
+        self.assertEqual(result.device_id, "garden-irrigation-a1b2c3")
+
     def test_builds_stable_topics(self) -> None:
         base = "garden/irrigation/xiao-1"
 
