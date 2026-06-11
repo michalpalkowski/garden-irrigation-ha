@@ -84,7 +84,7 @@ async def _async_validate_controller_topic(hass: Any, base_topic: str) -> bool:
     seen: dict[str, bool] = {
         "availability": False,
         "state": False,
-        "duration": False,
+        "zone_state": False,
     }
     unsubscribers = []
 
@@ -105,12 +105,12 @@ async def _async_validate_controller_topic(hass: Any, base_topic: str) -> bool:
             seen["state"] = True
             _maybe_done()
 
-    def _handle_duration(message: Any) -> None:
+    def _handle_zone_state(message: Any) -> None:
         try:
-            protocol.parse_duration_minutes(str(message.payload))
+            protocol.parse_zone_state(str(message.payload))
         except ProtocolError:
             return
-        seen["duration"] = True
+        seen["zone_state"] = True
         _maybe_done()
 
     try:
@@ -133,8 +133,8 @@ async def _async_validate_controller_topic(hass: Any, base_topic: str) -> bool:
         unsubscribers.append(
             await mqtt.async_subscribe(
                 hass,
-                protocol.zone_duration_state_topic(base_topic, 0),
-                _handle_duration,
+                protocol.zone_state_topic(base_topic, 0),
+                _handle_zone_state,
                 qos=0,
             )
         )
