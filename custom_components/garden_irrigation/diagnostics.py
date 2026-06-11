@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from . import GardenIrrigationConfigEntry
 from .const import CONF_BASE_TOPIC, CONF_BOARD, CONF_CHIP, CONF_DEVICE_ID
+from .diagnostic_redaction import redact_diagnostics_payload
 
 
 async def async_get_config_entry_diagnostics(
@@ -31,8 +32,8 @@ async def async_get_config_entry_diagnostics(
                 else None
             ),
             "controller_state": runtime.state.controller_state,
-            "diagnostics": runtime.state.diagnostics,
-            "network_status": runtime.state.network_status,
+            "diagnostics": redact_diagnostics_payload(runtime.state.diagnostics),
+            "network_status": redact_diagnostics_payload(runtime.state.network_status),
             "wifi_rssi": runtime.state.wifi_rssi,
             "zones": {
                 zone: {

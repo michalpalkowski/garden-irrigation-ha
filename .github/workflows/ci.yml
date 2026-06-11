@@ -22,8 +22,9 @@ jobs:
 
       - name: Python checks
         run: |
+          find tests/fixtures -name '*.json' -print0 | xargs -0 -r -n1 python3 -m json.tool >/dev/null
           python3 -m compileall -q custom_components/garden_irrigation tests
-          python3 -m unittest tests.test_garden_irrigation_protocol
+          python3 -m unittest discover -s tests
 
       - name: HACS structure checks
         run: |

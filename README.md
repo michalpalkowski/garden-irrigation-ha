@@ -19,7 +19,8 @@ Home Assistant custom integration for the Garden Irrigation Wi-Fi/MQTT controlle
 
 ## Discovery And Identity
 
-With firmware `0.4.0` or newer, the controller publishes retained identity to:
+With firmware that supports `garden-irrigation-device/v1`, the controller
+publishes retained identity to:
 
 ```text
 garden/irrigation/discovery/<device_id>
@@ -54,8 +55,8 @@ config entry.
   same bounded command path as manual starts.
 - OTA protocol helpers are included, but the Home Assistant update entity is not implemented in this initial release.
 - The controller `device_id`, runtime `base_topic`, board, chip, firmware
-  version, and capabilities come from signed firmware provisioning data exposed
-  as retained MQTT identity.
+  version, and capabilities come from validated firmware identity exposed as
+  retained MQTT payloads.
 
 ## Entities
 
@@ -106,6 +107,7 @@ entity ID prefix before importing it.
 python3 -m json.tool hacs.json >/dev/null
 python3 -m json.tool custom_components/garden_irrigation/manifest.json >/dev/null
 python3 -m json.tool custom_components/garden_irrigation/strings.json >/dev/null
+find tests/fixtures -name '*.json' -print0 | xargs -0 -r -n1 python3 -m json.tool >/dev/null
 python3 -m compileall -q custom_components/garden_irrigation tests
-python3 -m unittest tests.test_garden_irrigation_protocol
+python3 -m unittest discover -s tests
 ```
