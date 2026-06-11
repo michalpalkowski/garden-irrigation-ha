@@ -5,13 +5,14 @@
         "title": "Garden Irrigation",
         "description": "Connect a Garden Irrigation Wi-Fi/MQTT controller by MQTT base topic.",
         "data": {
-          "base_topic": "MQTT base topic",
-          "device_id": "Device ID"
+          "device_id": "Controller name",
+          "base_topic": "Advanced: custom MQTT base topic"
         }
       }
     },
     "error": {
       "invalid_base_topic": "The MQTT base topic is not valid.",
+      "invalid_controller": "The controller name or MQTT base topic is not valid.",
       "controller_not_found": "No Garden Irrigation controller was detected on this MQTT base topic."
     },
     "abort": {

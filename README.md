@@ -19,13 +19,13 @@ Home Assistant custom integration for the Garden Irrigation Wi-Fi/MQTT controlle
 
 ## MQTT Base Topic
 
-During setup, enter the controller MQTT base topic, for example:
+During setup, enter the controller name, for example:
 
 ```text
-garden/irrigation/xiao-esp32c6-1
+xiao-esp32c6-1
 ```
 
-The integration validates the topic by waiting for retained controller MQTT state before creating the config entry.
+The integration builds the default MQTT base topic as `garden/irrigation/<controller-name>`. Use the advanced custom MQTT base topic field only for non-standard firmware builds. The integration validates the topic by waiting for retained controller MQTT state before creating the config entry.
 
 ## Safety
 

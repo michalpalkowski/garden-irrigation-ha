@@ -17,6 +17,8 @@ OTA_APPLICATION: Final = "garden-firmware"
 MAX_ZONES: Final = 4
 MAX_DURATION_MINUTES: Final = 60
 MAX_DURATION_SECONDS: Final = MAX_DURATION_MINUTES * 60
+DEFAULT_TOPIC_PREFIX: Final = "garden/irrigation"
+IDENTITY_SCHEMA: Final = "garden-irrigation-device/v1"
 
 _TOPIC_PART_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _HEX_32_RE: Final = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -85,6 +87,34 @@ class OtaRequest:
     nonce: str
 
 
+@dataclass(frozen=True)
+class DeviceIdentity:
+    """Validated controller identity payload."""
+
+    device_id: str
+    base_topic: str
+    board: str
+    chip: str
+    firmware_version: str
+    firmware_build: str | None
+    protocol_schema: str
+
+
+def normalize_device_id(value: str) -> str:
+    """Validate and normalize a user-facing controller device ID."""
+    device_id = value.strip().strip("/")
+    if not _TOPIC_PART_RE.fullmatch(device_id):
+        raise ProtocolError("device ID contains invalid characters")
+    if "/" in device_id:
+        raise ProtocolError("device ID cannot contain slashes")
+    return device_id
+
+
+def base_topic_from_device_id(device_id: str) -> str:
+    """Build the default Garden MQTT base topic for a device ID."""
+    return f"{DEFAULT_TOPIC_PREFIX}/{normalize_device_id(device_id)}"
+
+
 def normalize_base_topic(value: str) -> str:
     """Validate and normalize a controller MQTT base topic."""
     topic = value.strip().strip("/")
@@ -96,6 +126,35 @@ def normalize_base_topic(value: str) -> str:
     if any(not _TOPIC_PART_RE.fullmatch(part) for part in parts):
         raise ProtocolError("base topic contains an invalid segment")
     return topic
+
+
+def identity_topic(device_id: str) -> str:
+    """Return the retained identity topic for one controller."""
+    return f"{DEFAULT_TOPIC_PREFIX}/discovery/{normalize_device_id(device_id)}"
+
+
+def parse_identity_payload(payload: dict[str, object]) -> DeviceIdentity:
+    """Validate and parse a controller identity payload."""
+    if payload.get("schema") != IDENTITY_SCHEMA:
+        raise ProtocolError("unsupported identity schema")
+
+    device_id = normalize_device_id(_required_str(payload, "device_id"))
+    base_topic = normalize_base_topic(_required_str(payload, "base_topic"))
+    expected_base_topic = base_topic_from_device_id(device_id)
+    if base_topic != expected_base_topic:
+        raise ProtocolError("identity base topic does not match device ID")
+
+    return DeviceIdentity(
+        device_id=device_id,
+        base_topic=base_topic,
+        board=_required_str(payload, "board"),
+        chip=_required_str(payload, "chip"),
+        firmware_version=_required_str(payload, "firmware_version"),
+        firmware_build=payload.get("firmware_build")
+        if isinstance(payload.get("firmware_build"), str)
+        else None,
+        protocol_schema=_required_str(payload, "protocol_schema"),
+    )
 
 
 def validate_zone(zone: int) -> int:

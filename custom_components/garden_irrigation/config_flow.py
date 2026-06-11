@@ -18,11 +18,10 @@ from .const import (
     CONF_PROTOCOL_SCHEMA,
     DEFAULT_BOARD,
     DEFAULT_CHIP,
-    DEFAULT_DEVICE_ID,
     DEFAULT_PROTOCOL_SCHEMA,
     DOMAIN,
 )
-from .protocol import ProtocolError, normalize_base_topic
+from .protocol import ProtocolError, base_topic_from_device_id, normalize_base_topic, normalize_device_id
 from . import protocol
 
 MQTT_VALIDATE_TIMEOUT_SECONDS = 5
@@ -41,15 +40,17 @@ class GardenIrrigationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                base_topic = normalize_base_topic(user_input[CONF_BASE_TOPIC])
+                device_id = normalize_device_id(user_input[CONF_DEVICE_ID])
+                base_topic = normalize_base_topic(
+                    user_input.get(CONF_BASE_TOPIC) or base_topic_from_device_id(device_id)
+                )
             except (KeyError, ProtocolError):
-                errors[CONF_BASE_TOPIC] = "invalid_base_topic"
+                errors["base"] = "invalid_controller"
             else:
                 valid = await _async_validate_controller_topic(self.hass, base_topic)
                 if not valid:
                     errors["base"] = "controller_not_found"
                 else:
-                    device_id = user_input.get(CONF_DEVICE_ID) or DEFAULT_DEVICE_ID
                     await self.async_set_unique_id(device_id)
                     self._abort_if_unique_id_configured()
 
@@ -68,8 +69,8 @@ class GardenIrrigationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_BASE_TOPIC): str,
-                    vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): str,
+                    vol.Required(CONF_DEVICE_ID): str,
+                    vol.Optional(CONF_BASE_TOPIC): str,
                 }
             ),
             errors=errors,

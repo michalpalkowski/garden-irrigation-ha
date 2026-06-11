@@ -37,6 +37,49 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
                 with self.assertRaises(protocol.ProtocolError):
                     protocol.normalize_base_topic(invalid)
 
+    def test_builds_base_topic_from_device_id(self) -> None:
+        self.assertEqual(
+            protocol.base_topic_from_device_id("xiao-esp32c6-1"),
+            "garden/irrigation/xiao-esp32c6-1",
+        )
+        self.assertEqual(
+            protocol.identity_topic("xiao-esp32c6-1"),
+            "garden/irrigation/discovery/xiao-esp32c6-1",
+        )
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.base_topic_from_device_id("garden/xiao")
+
+    def test_parses_identity_payload(self) -> None:
+        identity = protocol.parse_identity_payload(
+            {
+                "schema": "garden-irrigation-device/v1",
+                "device_id": "xiao-esp32c6-1",
+                "base_topic": "garden/irrigation/xiao-esp32c6-1",
+                "board": "xiao-esp32c6",
+                "chip": "esp32c6",
+                "firmware_version": "0.1.0",
+                "firmware_build": "build-123",
+                "protocol_schema": "garden-irrigation-mqtt/v1",
+            }
+        )
+
+        self.assertEqual(identity.device_id, "xiao-esp32c6-1")
+        self.assertEqual(identity.base_topic, "garden/irrigation/xiao-esp32c6-1")
+
+    def test_rejects_identity_base_topic_mismatch(self) -> None:
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_identity_payload(
+                {
+                    "schema": "garden-irrigation-device/v1",
+                    "device_id": "xiao-esp32c6-1",
+                    "base_topic": "garden/irrigation/other",
+                    "board": "xiao-esp32c6",
+                    "chip": "esp32c6",
+                    "firmware_version": "0.1.0",
+                    "protocol_schema": "garden-irrigation-mqtt/v1",
+                }
+            )
+
     def test_builds_stable_topics(self) -> None:
         base = "garden/irrigation/xiao-1"
 
