@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Garden Irrigation",
+        "description": "Connect a Garden Irrigation Wi-Fi/MQTT controller by MQTT base topic.",
+        "data": {
+          "base_topic": "MQTT base topic",
+          "device_id": "Device ID"
+        }
+      }
+    },
+    "error": {
+      "invalid_base_topic": "The MQTT base topic is not valid.",
+      "controller_not_found": "No Garden Irrigation controller was detected on this MQTT base topic."
+    },
+    "abort": {
+      "already_configured": "This Garden Irrigation controller is already configured."
+    }
+  }
+}

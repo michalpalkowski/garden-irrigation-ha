@@ -1,0 +1,12 @@
+{
+  "domain": "garden_irrigation",
+  "name": "Garden Irrigation",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["mqtt"],
+  "documentation": "https://github.com/home-automations/garden-irrigation",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/home-automations/garden-irrigation/issues",
+  "mqtt": ["garden/irrigation/+/state", "garden/irrigation/+/availability"],
+  "version": "0.1.0"
+}
