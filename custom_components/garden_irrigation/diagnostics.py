@@ -7,7 +7,13 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from . import GardenIrrigationConfigEntry
-from .const import CONF_BASE_TOPIC, CONF_BOARD, CONF_CHIP, CONF_DEVICE_ID
+from .const import (
+    CONF_BASE_TOPIC,
+    CONF_BOARD,
+    CONF_CHIP,
+    CONF_DEVICE_ID,
+    CONF_WEATHER_ENTITY,
+)
 from .diagnostic_redaction import redact_diagnostics_payload
 
 
@@ -23,6 +29,7 @@ async def async_get_config_entry_diagnostics(
             "base_topic": entry.data.get(CONF_BASE_TOPIC),
             "board": entry.data.get(CONF_BOARD),
             "chip": entry.data.get(CONF_CHIP),
+            "weather_entity": entry.options.get(CONF_WEATHER_ENTITY),
         },
         "runtime": {
             "available": runtime.available,
@@ -35,6 +42,16 @@ async def async_get_config_entry_diagnostics(
             "diagnostics": redact_diagnostics_payload(runtime.state.diagnostics),
             "network_status": redact_diagnostics_payload(runtime.state.network_status),
             "wifi_rssi": runtime.state.wifi_rssi,
+            "weather_guard": {
+                "rain_probability_skip_percent": (
+                    runtime.state.rain_probability_skip_percent
+                ),
+                "precipitation_skip_mm": runtime.state.precipitation_skip_mm,
+                "humidity_skip_percent": runtime.state.humidity_skip_percent,
+                "rain_lookahead_hours": runtime.state.rain_lookahead_hours,
+                "last_decision": runtime.state.last_weather_decision.state.value,
+                "last_reason": runtime.state.last_weather_decision.reason,
+            },
             "zones": {
                 zone: {
                     "state": zone_state.state.value

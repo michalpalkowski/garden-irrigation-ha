@@ -8,10 +8,8 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/michalpalkowski/garden-irrigation-ha/issues",
   "mqtt": [
-    "garden/irrigation/+/state",
-    "garden/irrigation/+/availability",
     "garden/irrigation/+/identity",
     "garden/irrigation/discovery/+"
   ],
-  "version": "0.5.0"
+  "version": "0.6.0"
 }

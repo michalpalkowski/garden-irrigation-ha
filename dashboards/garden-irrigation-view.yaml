@@ -13,19 +13,19 @@ sections:
         square: false
         cards:
           - type: tile
-            entity: switch.garden_irrigation_wifi_zone_0
+            entity: switch.xiao_esp32c6_1_zone_0
             name: Strefa 0
             icon: mdi:valve-open
           - type: tile
-            entity: switch.garden_irrigation_wifi_zone_1
+            entity: switch.xiao_esp32c6_1_zone_1
             name: Strefa 1
             icon: mdi:valve-open
           - type: tile
-            entity: switch.garden_irrigation_wifi_zone_2
+            entity: switch.xiao_esp32c6_1_zone_2
             name: Strefa 2
             icon: mdi:valve-open
           - type: tile
-            entity: switch.garden_irrigation_wifi_zone_3
+            entity: switch.xiao_esp32c6_1_zone_3
             name: Strefa 3
             icon: mdi:valve-open
       - type: button
@@ -36,61 +36,82 @@ sections:
           action: call-service
           service: garden_irrigation.stop_all
           data:
-            device_id: garden-irrigation-wifi
+            device_id: xiao-esp32c6-1
       - type: entities
         title: Plan
         show_header_toggle: false
         entities:
-          - entity: sensor.garden_irrigation_wifi_next_watering
+          - entity: sensor.xiao_esp32c6_1_next_watering
             name: Decyzja
             icon: mdi:calendar-clock
           - type: attribute
-            entity: sensor.garden_irrigation_wifi_next_watering
+            entity: sensor.xiao_esp32c6_1_next_watering
             attribute: reason
             name: Powod
             icon: mdi:information-outline
           - type: attribute
-            entity: sensor.garden_irrigation_wifi_next_watering
+            entity: sensor.xiao_esp32c6_1_next_watering
             attribute: active_zones
             name: Aktywne strefy
             icon: mdi:sprinkler-variant
           - type: attribute
-            entity: sensor.garden_irrigation_wifi_next_watering
+            entity: sensor.xiao_esp32c6_1_next_watering
             attribute: scheduled_at
             name: Najblizszy start
             icon: mdi:clock-outline
           - type: attribute
-            entity: sensor.garden_irrigation_wifi_next_watering
+            entity: sensor.xiao_esp32c6_1_next_watering
             attribute: total_duration_minutes
             name: Suma czasu
             icon: mdi:timer-outline
       - type: entities
+        title: Decyzja automatyzacji
+        show_header_toggle: false
+        entities:
+          - entity: sensor.xiao_esp32c6_1_automation_decision
+            name: Status
+            icon: mdi:robot-outline
+          - type: attribute
+            entity: sensor.xiao_esp32c6_1_automation_decision
+            attribute: reason
+            name: Powod
+            icon: mdi:information-outline
+          - entity: number.xiao_esp32c6_1_weather_rain_probability_skip_threshold
+            name: Prog prawdopodobienstwa deszczu
+            icon: mdi:weather-pouring
+          - entity: number.xiao_esp32c6_1_weather_precipitation_skip_threshold
+            name: Prog opadu
+            icon: mdi:weather-rainy
+          - entity: number.xiao_esp32c6_1_weather_humidity_skip_threshold
+            name: Prog wilgotnosci
+            icon: mdi:water-percent
+      - type: entities
         title: Sterownik
         show_header_toggle: false
         entities:
-          - entity: binary_sensor.garden_irrigation_wifi_mqtt_availability
+          - entity: binary_sensor.xiao_esp32c6_1_mqtt_availability
             name: Dostepnosc MQTT
             icon: mdi:cloud-check-outline
-          - entity: sensor.garden_irrigation_wifi_controller_state
+          - entity: sensor.xiao_esp32c6_1_controller_state
             name: Stan
             icon: mdi:state-machine
-          - entity: sensor.garden_irrigation_wifi_diagnostics
+          - entity: sensor.xiao_esp32c6_1_diagnostics
             name: Diagnostyka
             icon: mdi:message-alert-outline
-          - entity: sensor.garden_irrigation_wifi_network_status
+          - entity: sensor.xiao_esp32c6_1_network_status
             name: Siec
             icon: mdi:lan-connect
-          - entity: sensor.garden_irrigation_wifi_wifi_status
+          - entity: sensor.xiao_esp32c6_1_wifi_status
             name: Lacze Wi-Fi
             icon: mdi:wifi
-          - entity: sensor.garden_irrigation_wifi_wifi_quality
+          - entity: sensor.xiao_esp32c6_1_wifi_quality
             name: Jakosc Wi-Fi
             icon: mdi:wifi-strength-3
-          - entity: sensor.garden_irrigation_wifi_wifi_signal
+          - entity: sensor.xiao_esp32c6_1_wifi_signal
             name: RSSI Wi-Fi
             icon: mdi:wifi
       - type: gauge
-        entity: sensor.garden_irrigation_wifi_wifi_quality
+        entity: sensor.xiao_esp32c6_1_wifi_quality
         name: Jakosc Wi-Fi
         min: 0
         max: 100
@@ -105,61 +126,61 @@ sections:
         title: "Harmonogram: Strefa 0"
         show_header_toggle: false
         entities:
-          - entity: switch.garden_irrigation_wifi_zone_0_schedule
+          - entity: switch.xiao_esp32c6_1_zone_0_schedule
             name: Automatyzacja
             icon: mdi:calendar-check-outline
-          - entity: time.garden_irrigation_wifi_zone_0_schedule_time
+          - entity: time.xiao_esp32c6_1_zone_0_schedule_time
             name: Godzina startu
             icon: mdi:clock-outline
-          - entity: number.garden_irrigation_wifi_zone_0_scheduled_duration
+          - entity: number.xiao_esp32c6_1_zone_0_scheduled_duration
             name: Czas automatyczny
             icon: mdi:timer-cog-outline
-          - entity: number.garden_irrigation_wifi_zone_0_manual_duration
+          - entity: number.xiao_esp32c6_1_zone_0_manual_duration
             name: Czas reczny
             icon: mdi:timer-play-outline
           - type: section
             label: Dni tygodnia
-          - entity: switch.garden_irrigation_wifi_zone_0_monday
+          - entity: switch.xiao_esp32c6_1_zone_0_monday
             name: Pon
-          - entity: switch.garden_irrigation_wifi_zone_0_tuesday
+          - entity: switch.xiao_esp32c6_1_zone_0_tuesday
             name: Wt
-          - entity: switch.garden_irrigation_wifi_zone_0_wednesday
+          - entity: switch.xiao_esp32c6_1_zone_0_wednesday
             name: Sr
-          - entity: switch.garden_irrigation_wifi_zone_0_thursday
+          - entity: switch.xiao_esp32c6_1_zone_0_thursday
             name: Czw
-          - entity: switch.garden_irrigation_wifi_zone_0_friday
+          - entity: switch.xiao_esp32c6_1_zone_0_friday
             name: Pt
-          - entity: switch.garden_irrigation_wifi_zone_0_saturday
+          - entity: switch.xiao_esp32c6_1_zone_0_saturday
             name: Sob
-          - entity: switch.garden_irrigation_wifi_zone_0_sunday
+          - entity: switch.xiao_esp32c6_1_zone_0_sunday
             name: Nd
       - type: entities
         title: "Harmonogram: Strefa 1"
         show_header_toggle: false
         entities:
-          - entity: switch.garden_irrigation_wifi_zone_1_schedule
+          - entity: switch.xiao_esp32c6_1_zone_1_schedule
             name: Automatyzacja
-          - entity: time.garden_irrigation_wifi_zone_1_schedule_time
+          - entity: time.xiao_esp32c6_1_zone_1_schedule_time
             name: Godzina startu
-          - entity: number.garden_irrigation_wifi_zone_1_scheduled_duration
+          - entity: number.xiao_esp32c6_1_zone_1_scheduled_duration
             name: Czas automatyczny
-          - entity: number.garden_irrigation_wifi_zone_1_manual_duration
+          - entity: number.xiao_esp32c6_1_zone_1_manual_duration
             name: Czas reczny
           - type: section
             label: Dni tygodnia
-          - entity: switch.garden_irrigation_wifi_zone_1_monday
+          - entity: switch.xiao_esp32c6_1_zone_1_monday
             name: Pon
-          - entity: switch.garden_irrigation_wifi_zone_1_tuesday
+          - entity: switch.xiao_esp32c6_1_zone_1_tuesday
             name: Wt
-          - entity: switch.garden_irrigation_wifi_zone_1_wednesday
+          - entity: switch.xiao_esp32c6_1_zone_1_wednesday
             name: Sr
-          - entity: switch.garden_irrigation_wifi_zone_1_thursday
+          - entity: switch.xiao_esp32c6_1_zone_1_thursday
             name: Czw
-          - entity: switch.garden_irrigation_wifi_zone_1_friday
+          - entity: switch.xiao_esp32c6_1_zone_1_friday
             name: Pt
-          - entity: switch.garden_irrigation_wifi_zone_1_saturday
+          - entity: switch.xiao_esp32c6_1_zone_1_saturday
             name: Sob
-          - entity: switch.garden_irrigation_wifi_zone_1_sunday
+          - entity: switch.xiao_esp32c6_1_zone_1_sunday
             name: Nd
   - type: grid
     cards:
@@ -167,57 +188,57 @@ sections:
         title: "Harmonogram: Strefa 2"
         show_header_toggle: false
         entities:
-          - entity: switch.garden_irrigation_wifi_zone_2_schedule
+          - entity: switch.xiao_esp32c6_1_zone_2_schedule
             name: Automatyzacja
-          - entity: time.garden_irrigation_wifi_zone_2_schedule_time
+          - entity: time.xiao_esp32c6_1_zone_2_schedule_time
             name: Godzina startu
-          - entity: number.garden_irrigation_wifi_zone_2_scheduled_duration
+          - entity: number.xiao_esp32c6_1_zone_2_scheduled_duration
             name: Czas automatyczny
-          - entity: number.garden_irrigation_wifi_zone_2_manual_duration
+          - entity: number.xiao_esp32c6_1_zone_2_manual_duration
             name: Czas reczny
           - type: section
             label: Dni tygodnia
-          - entity: switch.garden_irrigation_wifi_zone_2_monday
+          - entity: switch.xiao_esp32c6_1_zone_2_monday
             name: Pon
-          - entity: switch.garden_irrigation_wifi_zone_2_tuesday
+          - entity: switch.xiao_esp32c6_1_zone_2_tuesday
             name: Wt
-          - entity: switch.garden_irrigation_wifi_zone_2_wednesday
+          - entity: switch.xiao_esp32c6_1_zone_2_wednesday
             name: Sr
-          - entity: switch.garden_irrigation_wifi_zone_2_thursday
+          - entity: switch.xiao_esp32c6_1_zone_2_thursday
             name: Czw
-          - entity: switch.garden_irrigation_wifi_zone_2_friday
+          - entity: switch.xiao_esp32c6_1_zone_2_friday
             name: Pt
-          - entity: switch.garden_irrigation_wifi_zone_2_saturday
+          - entity: switch.xiao_esp32c6_1_zone_2_saturday
             name: Sob
-          - entity: switch.garden_irrigation_wifi_zone_2_sunday
+          - entity: switch.xiao_esp32c6_1_zone_2_sunday
             name: Nd
       - type: entities
         title: "Harmonogram: Strefa 3"
         show_header_toggle: false
         entities:
-          - entity: switch.garden_irrigation_wifi_zone_3_schedule
+          - entity: switch.xiao_esp32c6_1_zone_3_schedule
             name: Automatyzacja
-          - entity: time.garden_irrigation_wifi_zone_3_schedule_time
+          - entity: time.xiao_esp32c6_1_zone_3_schedule_time
             name: Godzina startu
-          - entity: number.garden_irrigation_wifi_zone_3_scheduled_duration
+          - entity: number.xiao_esp32c6_1_zone_3_scheduled_duration
             name: Czas automatyczny
-          - entity: number.garden_irrigation_wifi_zone_3_manual_duration
+          - entity: number.xiao_esp32c6_1_zone_3_manual_duration
             name: Czas reczny
           - type: section
             label: Dni tygodnia
-          - entity: switch.garden_irrigation_wifi_zone_3_monday
+          - entity: switch.xiao_esp32c6_1_zone_3_monday
             name: Pon
-          - entity: switch.garden_irrigation_wifi_zone_3_tuesday
+          - entity: switch.xiao_esp32c6_1_zone_3_tuesday
             name: Wt
-          - entity: switch.garden_irrigation_wifi_zone_3_wednesday
+          - entity: switch.xiao_esp32c6_1_zone_3_wednesday
             name: Sr
-          - entity: switch.garden_irrigation_wifi_zone_3_thursday
+          - entity: switch.xiao_esp32c6_1_zone_3_thursday
             name: Czw
-          - entity: switch.garden_irrigation_wifi_zone_3_friday
+          - entity: switch.xiao_esp32c6_1_zone_3_friday
             name: Pt
-          - entity: switch.garden_irrigation_wifi_zone_3_saturday
+          - entity: switch.xiao_esp32c6_1_zone_3_saturday
             name: Sob
-          - entity: switch.garden_irrigation_wifi_zone_3_sunday
+          - entity: switch.xiao_esp32c6_1_zone_3_sunday
             name: Nd
   - type: grid
     cards:
@@ -226,29 +247,29 @@ sections:
         show_name: true
         show_state: true
         entities:
-          - entity: sensor.garden_irrigation_wifi_zone_0_state
+          - entity: sensor.xiao_esp32c6_1_zone_0_state
             name: Strefa 0
             icon: mdi:water-pump
-          - entity: sensor.garden_irrigation_wifi_zone_1_state
+          - entity: sensor.xiao_esp32c6_1_zone_1_state
             name: Strefa 1
             icon: mdi:water-pump
-          - entity: sensor.garden_irrigation_wifi_zone_2_state
+          - entity: sensor.xiao_esp32c6_1_zone_2_state
             name: Strefa 2
             icon: mdi:water-pump
-          - entity: sensor.garden_irrigation_wifi_zone_3_state
+          - entity: sensor.xiao_esp32c6_1_zone_3_state
             name: Strefa 3
             icon: mdi:water-pump
       - type: entities
         title: Czas pracy
         show_header_toggle: false
         entities:
-          - entity: sensor.garden_irrigation_wifi_zone_0_run_minutes
+          - entity: sensor.xiao_esp32c6_1_zone_0_run_minutes
             name: Strefa 0
-          - entity: sensor.garden_irrigation_wifi_zone_1_run_minutes
+          - entity: sensor.xiao_esp32c6_1_zone_1_run_minutes
             name: Strefa 1
-          - entity: sensor.garden_irrigation_wifi_zone_2_run_minutes
+          - entity: sensor.xiao_esp32c6_1_zone_2_run_minutes
             name: Strefa 2
-          - entity: sensor.garden_irrigation_wifi_zone_3_run_minutes
+          - entity: sensor.xiao_esp32c6_1_zone_3_run_minutes
             name: Strefa 3
       - type: statistics-graph
         title: Czas podlewania - ostatnie 7 dni
@@ -259,13 +280,13 @@ sections:
         stat_types:
           - change
         entities:
-          - entity: sensor.garden_irrigation_wifi_zone_0_run_seconds
+          - entity: sensor.xiao_esp32c6_1_zone_0_run_seconds
             name: Strefa 0
-          - entity: sensor.garden_irrigation_wifi_zone_1_run_seconds
+          - entity: sensor.xiao_esp32c6_1_zone_1_run_seconds
             name: Strefa 1
-          - entity: sensor.garden_irrigation_wifi_zone_2_run_seconds
+          - entity: sensor.xiao_esp32c6_1_zone_2_run_seconds
             name: Strefa 2
-          - entity: sensor.garden_irrigation_wifi_zone_3_run_seconds
+          - entity: sensor.xiao_esp32c6_1_zone_3_run_seconds
             name: Strefa 3
   - type: grid
     cards:
@@ -273,13 +294,13 @@ sections:
         title: Ostatnia aktywnosc sterownika
         hours_to_show: 48
         entities:
-          - binary_sensor.garden_irrigation_wifi_mqtt_availability
-          - sensor.garden_irrigation_wifi_controller_state
-          - sensor.garden_irrigation_wifi_diagnostics
-          - sensor.garden_irrigation_wifi_wifi_status
-          - sensor.garden_irrigation_wifi_wifi_quality
-          - sensor.garden_irrigation_wifi_wifi_signal
-          - sensor.garden_irrigation_wifi_zone_0_state
-          - sensor.garden_irrigation_wifi_zone_1_state
-          - sensor.garden_irrigation_wifi_zone_2_state
-          - sensor.garden_irrigation_wifi_zone_3_state
+          - binary_sensor.xiao_esp32c6_1_mqtt_availability
+          - sensor.xiao_esp32c6_1_controller_state
+          - sensor.xiao_esp32c6_1_diagnostics
+          - sensor.xiao_esp32c6_1_wifi_status
+          - sensor.xiao_esp32c6_1_wifi_quality
+          - sensor.xiao_esp32c6_1_wifi_signal
+          - sensor.xiao_esp32c6_1_zone_0_state
+          - sensor.xiao_esp32c6_1_zone_1_state
+          - sensor.xiao_esp32c6_1_zone_2_state
+          - sensor.xiao_esp32c6_1_zone_3_state

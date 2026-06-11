@@ -10,6 +10,7 @@ import voluptuous as vol
 
 from homeassistant.components import mqtt
 from homeassistant import config_entries
+from homeassistant.core import callback
 from homeassistant.helpers.service_info.mqtt import MqttServiceInfo
 
 from .const import (
@@ -18,6 +19,7 @@ from .const import (
     CONF_CHIP,
     CONF_DEVICE_ID,
     CONF_PROTOCOL_SCHEMA,
+    CONF_WEATHER_ENTITY,
     DOMAIN,
 )
 from .protocol import (
@@ -37,6 +39,14 @@ class GardenIrrigationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     _discovered_identity: DeviceIdentity | None = None
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> GardenIrrigationOptionsFlow:
+        """Create the options flow."""
+        return GardenIrrigationOptionsFlow(config_entry)
 
     async def async_step_mqtt(
         self, discovery_info: MqttServiceInfo
@@ -200,3 +210,40 @@ def _entry_data_from_identity(identity: DeviceIdentity) -> dict[str, str]:
         CONF_BOARD: identity.board,
         CONF_CHIP: identity.chip,
     }
+
+
+class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
+    """Handle Garden Irrigation options."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize the options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Configure weather guard options."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            weather_entity = str(user_input.get(CONF_WEATHER_ENTITY, "")).strip()
+            if weather_entity and not weather_entity.startswith("weather."):
+                errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
+            else:
+                return self.async_create_entry(
+                    title="",
+                    data={CONF_WEATHER_ENTITY: weather_entity},
+                )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_WEATHER_ENTITY,
+                        default=self.config_entry.options.get(CONF_WEATHER_ENTITY, ""),
+                    ): str,
+                }
+            ),
+            errors=errors,
+        )

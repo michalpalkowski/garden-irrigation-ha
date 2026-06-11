@@ -10,19 +10,35 @@ from typing import Any
 
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     CONF_BASE_TOPIC,
     CONF_DEVICE_ID,
+    CONF_WEATHER_ENTITY,
+    DEFAULT_HUMIDITY_SKIP_PERCENT,
     DEFAULT_MANUAL_DURATION_MINUTES,
+    DEFAULT_PRECIPITATION_SKIP_MM,
+    DEFAULT_RAIN_LOOKAHEAD_HOURS,
+    DEFAULT_RAIN_PROBABILITY_SKIP_PERCENT,
     DEFAULT_SCHEDULE_TIME,
     DEFAULT_SCHEDULED_DURATION_MINUTES,
     DEFAULT_ZONE_COUNT,
     WEEKDAYS,
 )
 from . import protocol
+from .weather_policy import (
+    ForecastItem,
+    WeatherDecision,
+    WeatherDecisionState,
+    WeatherSnapshot,
+    WeatherThresholds,
+    evaluate_weather_policy,
+    forecast_item_from_mapping,
+    validate_thresholds,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +67,21 @@ class GardenControllerState:
     diagnostics: str | None = None
     network_status: dict[str, Any] | None = None
     wifi_rssi: int | None = None
+    rain_probability_skip_percent: float = DEFAULT_RAIN_PROBABILITY_SKIP_PERCENT
+    precipitation_skip_mm: float = DEFAULT_PRECIPITATION_SKIP_MM
+    humidity_skip_percent: float = DEFAULT_HUMIDITY_SKIP_PERCENT
+    rain_lookahead_hours: int = DEFAULT_RAIN_LOOKAHEAD_HOURS
+    last_weather_decision: WeatherDecision = field(
+        default_factory=lambda: evaluate_weather_policy(
+            None,
+            WeatherThresholds(
+                rain_probability_skip_percent=DEFAULT_RAIN_PROBABILITY_SKIP_PERCENT,
+                precipitation_skip_mm=DEFAULT_PRECIPITATION_SKIP_MM,
+                humidity_skip_percent=DEFAULT_HUMIDITY_SKIP_PERCENT,
+                rain_lookahead_hours=DEFAULT_RAIN_LOOKAHEAD_HOURS,
+            ),
+        )
+    )
     zones: dict[int, GardenZoneState] = field(
         default_factory=lambda: {
             zone: GardenZoneState() for zone in range(DEFAULT_ZONE_COUNT)
@@ -72,6 +103,15 @@ class GardenIrrigationRuntime:
         self._listeners: list[Callable[[], None]] = []
         self._unsubscribers: list[CALLBACK_TYPE] = []
         self._unsub_schedule: CALLBACK_TYPE | None = None
+
+    @property
+    def weather_entity_id(self) -> str | None:
+        """Return the configured weather entity, if weather guard is enabled."""
+        value = self.entry.options.get(CONF_WEATHER_ENTITY)
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        return value or None
 
     async def async_start(self) -> None:
         """Subscribe to controller MQTT topics."""
@@ -170,6 +210,29 @@ class GardenIrrigationRuntime:
         self._async_notify_listeners()
 
     @callback
+    def set_rain_probability_skip_percent(self, value: float) -> None:
+        """Set the rain probability threshold that blocks schedules."""
+        self.state.rain_probability_skip_percent = _validate_percentage(value)
+        self._refresh_weather_decision_after_config_change()
+        self._async_notify_listeners()
+
+    @callback
+    def set_precipitation_skip_mm(self, value: float) -> None:
+        """Set the precipitation threshold that blocks schedules."""
+        if not 0 <= value <= 100:
+            raise protocol.ProtocolError("precipitation threshold must be 0..100")
+        self.state.precipitation_skip_mm = round(float(value), 1)
+        self._refresh_weather_decision_after_config_change()
+        self._async_notify_listeners()
+
+    @callback
+    def set_humidity_skip_percent(self, value: float) -> None:
+        """Set the humidity threshold that blocks schedules."""
+        self.state.humidity_skip_percent = _validate_percentage(value)
+        self._refresh_weather_decision_after_config_change()
+        self._async_notify_listeners()
+
+    @callback
     def set_schedule_enabled(self, zone: int, enabled: bool) -> None:
         """Enable or disable the local schedule for one zone."""
         zone = protocol.validate_zone(zone)
@@ -265,10 +328,99 @@ class GardenIrrigationRuntime:
                 continue
 
             self.state.schedule_run_keys.add(run_key)
+            decision = await self.async_evaluate_weather_policy()
+            if not decision.allowed:
+                _LOGGER.info(
+                    "Skipping scheduled Garden Irrigation zone %s for %s: %s",
+                    zone,
+                    self.device_id,
+                    decision.reason,
+                )
+                continue
+
             await self.async_start_zone(
                 zone,
                 zone_state.scheduled_duration_minutes * 60,
             )
+
+    async def async_evaluate_weather_policy(self) -> WeatherDecision:
+        """Refresh and return the current weather guard decision."""
+        thresholds = self.weather_thresholds
+        entity_id = self.weather_entity_id
+        if entity_id is None:
+            decision = evaluate_weather_policy(None, thresholds)
+            self.state.last_weather_decision = decision
+            self._async_notify_listeners()
+            return decision
+
+        snapshot = await self._async_weather_snapshot(entity_id)
+        decision = evaluate_weather_policy(snapshot, thresholds)
+        self.state.last_weather_decision = decision
+        self._async_notify_listeners()
+        return decision
+
+    @property
+    def weather_thresholds(self) -> WeatherThresholds:
+        """Return validated weather guard thresholds."""
+        return validate_thresholds(
+            WeatherThresholds(
+                rain_probability_skip_percent=(
+                    self.state.rain_probability_skip_percent
+                ),
+                precipitation_skip_mm=self.state.precipitation_skip_mm,
+                humidity_skip_percent=self.state.humidity_skip_percent,
+                rain_lookahead_hours=self.state.rain_lookahead_hours,
+            )
+        )
+
+    async def _async_weather_snapshot(self, entity_id: str) -> WeatherSnapshot:
+        """Read current weather state and hourly forecast from Home Assistant."""
+        current = self.hass.states.get(entity_id)
+        if current is None or current.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return WeatherSnapshot(
+                entity_id=entity_id,
+                state=None if current is None else current.state,
+                humidity_percent=None,
+                forecast=(),
+            )
+
+        humidity = _float_or_none(current.attributes.get("humidity"))
+        try:
+            response = await self.hass.services.async_call(
+                "weather",
+                "get_forecasts",
+                {"entity_id": entity_id, "type": "hourly"},
+                blocking=True,
+                return_response=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - HA service failures are runtime state.
+            _LOGGER.warning(
+                "Cannot read Garden Irrigation weather forecast from %s: %s",
+                entity_id,
+                exc,
+            )
+            return WeatherSnapshot(
+                entity_id=entity_id,
+                state=STATE_UNAVAILABLE,
+                humidity_percent=humidity,
+                forecast=(),
+            )
+        else:
+            forecast = _forecast_from_service_response(response, entity_id)
+            if not forecast:
+                return WeatherSnapshot(
+                    entity_id=entity_id,
+                    state=STATE_UNAVAILABLE,
+                    humidity_percent=humidity,
+                    forecast=(),
+                )
+
+        return WeatherSnapshot(
+            entity_id=entity_id,
+            state=current.state,
+            humidity_percent=humidity,
+            forecast=forecast,
+        )
 
     @callback
     def _prune_schedule_run_keys(self, today: dt.date) -> None:
@@ -280,7 +432,14 @@ class GardenIrrigationRuntime:
 
     def next_watering_state(self, now: dt.datetime) -> str:
         """Return a compact state for the next watering sensor."""
-        return "scheduled" if self._next_scheduled_zone(now) is not None else "disabled"
+        if self._next_scheduled_zone(now) is None:
+            return "disabled"
+        decision = self.state.last_weather_decision
+        if decision.state == WeatherDecisionState.WEATHER_POLICY_DISABLED:
+            return "scheduled"
+        if not decision.allowed:
+            return decision.state.value
+        return "scheduled"
 
     def next_watering_attributes(self, now: dt.datetime) -> dict[str, Any]:
         """Return dashboard-friendly schedule attributes."""
@@ -300,8 +459,10 @@ class GardenIrrigationRuntime:
             "total_duration_minutes": total_duration,
             "reason": "Schedules are disabled."
             if next_item is None
-            else "Next enabled zone schedule is ready.",
+            else self.state.last_weather_decision.reason,
+            "weather_decision": self.state.last_weather_decision.state.value,
         }
+        attrs.update(self.state.last_weather_decision.attributes)
         if next_item is not None:
             zone, scheduled_at = next_item
             attrs["next_zone"] = zone
@@ -337,3 +498,45 @@ class GardenIrrigationRuntime:
     def _async_notify_listeners(self) -> None:
         for listener in list(self._listeners):
             listener()
+
+    @callback
+    def _refresh_weather_decision_after_config_change(self) -> None:
+        """Refresh weather decision details after threshold changes."""
+        if self.weather_entity_id is not None:
+            self.hass.async_create_task(self.async_evaluate_weather_policy())
+            return
+        self.state.last_weather_decision = evaluate_weather_policy(
+            None,
+            self.weather_thresholds,
+        )
+
+
+def _validate_percentage(value: float) -> float:
+    """Validate and normalize a percentage."""
+    if not 0 <= value <= 100:
+        raise protocol.ProtocolError("percentage threshold must be 0..100")
+    return round(float(value), 0)
+
+
+def _float_or_none(value: Any) -> float | None:
+    """Return a float or None for unavailable state attributes."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _forecast_from_service_response(
+    response: Any,
+    entity_id: str,
+) -> tuple[ForecastItem, ...]:
+    """Normalize Home Assistant weather.get_forecasts response data."""
+    if not isinstance(response, dict):
+        return ()
+    entity_response = response.get(entity_id)
+    if not isinstance(entity_response, dict):
+        return ()
+    forecast = entity_response.get("forecast")
+    if not isinstance(forecast, list):
+        return ()
+    return tuple(forecast_item_from_mapping(item) for item in forecast)

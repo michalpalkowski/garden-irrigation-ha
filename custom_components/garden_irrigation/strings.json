@@ -25,5 +25,19 @@
       "invalid_discovery_payload": "The discovered MQTT identity payload is not valid Garden Irrigation identity.",
       "discovery_expired": "The discovered controller identity is no longer available. Start discovery again."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Garden Irrigation options",
+        "description": "Configure the optional weather guard used by local schedules. Leave empty to disable weather-based blocking.",
+        "data": {
+          "weather_entity": "Weather entity"
+        }
+      }
+    },
+    "error": {
+      "invalid_weather_entity": "Use a Home Assistant weather entity, for example weather.forecast_home."
+    }
   }
 }

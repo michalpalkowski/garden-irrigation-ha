@@ -136,6 +136,18 @@ async def async_setup_entry(
         GardenRuntimeSensor(
             runtime,
             GardenSensorDescription(
+                key="automation_decision",
+                name="Automation decision",
+                value_fn=lambda item: item.state.last_weather_decision.state.value,
+                attrs_fn=lambda item: item.state.last_weather_decision.attributes
+                | {"reason": item.state.last_weather_decision.reason},
+                icon="mdi:robot-outline",
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
                 key="next_watering",
                 name="Next watering",
                 value_fn=lambda item: item.next_watering_state(dt_util.now()),

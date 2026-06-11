@@ -53,7 +53,9 @@ config entry.
   integration sends the selected value directly as `ON:<seconds>`.
 - Schedule entities are Home Assistant owned, disabled by default, and use the
   same bounded command path as manual starts.
-- OTA protocol helpers are included, but the Home Assistant update entity is not implemented in this initial release.
+- The update entity exposes installed firmware metadata from MQTT. Firmware
+  installation still uses the signed OTA tooling until a trusted release
+  manifest source is wired into the Home Assistant UI.
 - The controller `device_id`, runtime `base_topic`, board, chip, firmware
   version, and capabilities come from validated firmware identity exposed as
   retained MQTT payloads.
@@ -66,9 +68,26 @@ config entry.
 - Zone schedule enabled switches
 - Zone weekday switches
 - Zone schedule time entities
+- Weather guard threshold numbers
 - MQTT availability binary sensor
 - Stop-all button
-- Controller state, diagnostics, network, Wi-Fi, plan, zone state, and runtime sensors
+- Controller state, diagnostics, network, Wi-Fi, automation decision, plan, zone
+  state, and runtime sensors
+
+## Weather Guard
+
+Open `Settings -> Devices & services -> Garden Irrigation -> Configure` and set
+the Home Assistant weather entity, for example:
+
+```text
+weather.forecast_dom
+```
+
+When configured, scheduled watering is blocked when the weather entity is
+unavailable, current humidity is at or above the configured humidity threshold,
+or the hourly forecast exceeds the configured rain probability or precipitation
+threshold. Leave the weather entity empty to run schedules without weather-based
+blocking.
 
 ## Services
 
@@ -89,17 +108,15 @@ dashboards/garden-irrigation-view.yaml
 ```
 
 It is a Lovelace view template for the example controller name
-`garden-irrigation-wifi`. For a different controller name, replace the generated
+`xiao-esp32c6-1`. For a different controller name, replace the generated
 entity ID prefix before importing it.
 
 ## Current Limitations
 
 - The integration does not automatically edit Home Assistant storage dashboards.
-- Weather guard parity from the original project YAML package is not built into
-  the integration scheduler yet.
-- OTA update entities are not implemented yet.
-- Runtime Wi-Fi/MQTT provisioning is not implemented in the integration yet;
-  current firmware is still provisioned at build time.
+- Firmware OTA installation remains in external signed OTA tooling for now.
+- Runtime Wi-Fi/MQTT provisioning is firmware-backed; HA claim UI is planned
+  after the SoftAP claim flow is stable on hardware.
 
 ## Development Checks
 
