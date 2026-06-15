@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
-from urllib.parse import urlparse
 
 import voluptuous as vol
 
@@ -24,6 +23,7 @@ from .const import (
     CONF_WEATHER_ENTITY,
     DOMAIN,
 )
+from .options import validate_options
 from .protocol import (
     DeviceIdentity,
     ProtocolError,
@@ -228,20 +228,24 @@ class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
         """Configure weather guard options."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            weather_entity = str(user_input.get(CONF_WEATHER_ENTITY, "")).strip()
-            ota_manifest_url = str(
-                user_input.get(CONF_OTA_MANIFEST_URL, "")
-            ).strip()
-            if weather_entity and not _is_weather_entity_id(weather_entity):
-                errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
-            elif ota_manifest_url and not _is_https_url(ota_manifest_url):
-                errors[CONF_OTA_MANIFEST_URL] = "invalid_ota_manifest_url"
+            try:
+                options = validate_options(
+                    user_input.get(CONF_WEATHER_ENTITY),
+                    user_input.get(CONF_OTA_MANIFEST_URL),
+                )
+            except ValueError as exc:
+                if str(exc) == "invalid_weather_entity":
+                    errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
+                elif str(exc) == "invalid_ota_manifest_url":
+                    errors[CONF_OTA_MANIFEST_URL] = "invalid_ota_manifest_url"
+                else:
+                    errors["base"] = "invalid_options"
             else:
                 return self.async_create_entry(
                     title="",
                     data={
-                        CONF_WEATHER_ENTITY: weather_entity,
-                        CONF_OTA_MANIFEST_URL: ota_manifest_url,
+                        CONF_WEATHER_ENTITY: options.weather_entity,
+                        CONF_OTA_MANIFEST_URL: options.ota_manifest_url,
                     },
                 )
 
@@ -264,14 +268,3 @@ class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
             ),
             errors=errors,
         )
-
-
-def _is_weather_entity_id(value: str) -> bool:
-    """Return whether a user value looks like a weather entity ID."""
-    return value.startswith("weather.") and "/" not in value and "#" not in value
-
-
-def _is_https_url(value: str) -> bool:
-    """Return whether a user value is an HTTPS URL."""
-    parsed = urlparse(value)
-    return parsed.scheme == "https" and bool(parsed.netloc) and bool(parsed.path)

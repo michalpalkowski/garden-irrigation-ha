@@ -102,6 +102,19 @@ does not install firmware from Home Assistant yet; signed OTA installation stays
 in the external tooling until the HA install path has been tested on real XIAO
 ESP32-C6 hardware.
 
+## Claim Contract
+
+The integration includes typed helpers for the HA-assisted claim contract and
+the firmware SoftAP form payload. The current production-supported claim path is
+still the device SoftAP page at:
+
+```text
+http://192.168.4.1/
+```
+
+One-click claim from Home Assistant remains gated on hardware validation of the
+full SoftAP round trip.
+
 ## Services
 
 - `garden_irrigation.start_zone`
@@ -129,7 +142,7 @@ entity ID prefix before importing it.
 - The integration does not automatically edit Home Assistant storage dashboards.
 - Firmware OTA installation remains in external signed OTA tooling for now.
 - Runtime Wi-Fi/MQTT provisioning is firmware-backed; HA claim UI is planned
-  after the SoftAP claim flow is stable on hardware.
+  after the SoftAP claim flow is validated on hardware.
 
 ## Development Checks
 
