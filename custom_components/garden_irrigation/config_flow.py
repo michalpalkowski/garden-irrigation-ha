@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 import voluptuous as vol
 
@@ -18,6 +19,7 @@ from .const import (
     CONF_BOARD,
     CONF_CHIP,
     CONF_DEVICE_ID,
+    CONF_OTA_MANIFEST_URL,
     CONF_PROTOCOL_SCHEMA,
     CONF_WEATHER_ENTITY,
     DOMAIN,
@@ -227,12 +229,20 @@ class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             weather_entity = str(user_input.get(CONF_WEATHER_ENTITY, "")).strip()
-            if weather_entity and not weather_entity.startswith("weather."):
+            ota_manifest_url = str(
+                user_input.get(CONF_OTA_MANIFEST_URL, "")
+            ).strip()
+            if weather_entity and not _is_weather_entity_id(weather_entity):
                 errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
+            elif ota_manifest_url and not _is_https_url(ota_manifest_url):
+                errors[CONF_OTA_MANIFEST_URL] = "invalid_ota_manifest_url"
             else:
                 return self.async_create_entry(
                     title="",
-                    data={CONF_WEATHER_ENTITY: weather_entity},
+                    data={
+                        CONF_WEATHER_ENTITY: weather_entity,
+                        CONF_OTA_MANIFEST_URL: ota_manifest_url,
+                    },
                 )
 
         return self.async_show_form(
@@ -243,7 +253,25 @@ class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
                         CONF_WEATHER_ENTITY,
                         default=self.config_entry.options.get(CONF_WEATHER_ENTITY, ""),
                     ): str,
+                    vol.Optional(
+                        CONF_OTA_MANIFEST_URL,
+                        default=self.config_entry.options.get(
+                            CONF_OTA_MANIFEST_URL,
+                            "",
+                        ),
+                    ): str,
                 }
             ),
             errors=errors,
         )
+
+
+def _is_weather_entity_id(value: str) -> bool:
+    """Return whether a user value looks like a weather entity ID."""
+    return value.startswith("weather.") and "/" not in value and "#" not in value
+
+
+def _is_https_url(value: str) -> bool:
+    """Return whether a user value is an HTTPS URL."""
+    parsed = urlparse(value)
+    return parsed.scheme == "https" and bool(parsed.netloc) and bool(parsed.path)

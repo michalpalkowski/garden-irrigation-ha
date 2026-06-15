@@ -53,9 +53,10 @@ config entry.
   integration sends the selected value directly as `ON:<seconds>`.
 - Schedule entities are Home Assistant owned, disabled by default, and use the
   same bounded command path as manual starts.
-- The update entity exposes installed firmware metadata from MQTT. Firmware
-  installation still uses the signed OTA tooling until a trusted release
-  manifest source is wired into the Home Assistant UI.
+- The update entity exposes installed firmware metadata from MQTT and can read a
+  trusted HTTPS OTA manifest for latest-version metadata. Firmware installation
+  still uses the signed OTA tooling until the HA install path is
+  hardware-verified.
 - The controller `device_id`, runtime `base_topic`, board, chip, firmware
   version, and capabilities come from validated firmware identity exposed as
   retained MQTT payloads.
@@ -76,8 +77,9 @@ config entry.
 
 ## Weather Guard
 
-Open `Settings -> Devices & services -> Garden Irrigation -> Configure` and set
-the Home Assistant weather entity, for example:
+Open `Settings -> Devices & services -> Garden Irrigation -> Configure`.
+
+Set the Home Assistant weather entity, for example:
 
 ```text
 weather.forecast_dom
@@ -88,6 +90,17 @@ unavailable, current humidity is at or above the configured humidity threshold,
 or the hourly forecast exceeds the configured rain probability or precipitation
 threshold. Leave the weather entity empty to run schedules without weather-based
 blocking.
+
+## Firmware Metadata
+
+The same options screen accepts an optional `ota_manifest_url`. Use a full HTTPS
+URL to a `garden-ota-manifest/v1` JSON manifest.
+
+When configured, the firmware update entity shows latest-version metadata and
+validates that the manifest board/chip matches the controller. The integration
+does not install firmware from Home Assistant yet; signed OTA installation stays
+in the external tooling until the HA install path has been tested on real XIAO
+ESP32-C6 hardware.
 
 ## Services
 

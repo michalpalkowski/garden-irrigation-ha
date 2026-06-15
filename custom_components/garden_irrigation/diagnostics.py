@@ -12,6 +12,7 @@ from .const import (
     CONF_BOARD,
     CONF_CHIP,
     CONF_DEVICE_ID,
+    CONF_OTA_MANIFEST_URL,
     CONF_WEATHER_ENTITY,
 )
 from .diagnostic_redaction import redact_diagnostics_payload
@@ -30,6 +31,7 @@ async def async_get_config_entry_diagnostics(
             "board": entry.data.get(CONF_BOARD),
             "chip": entry.data.get(CONF_CHIP),
             "weather_entity": entry.options.get(CONF_WEATHER_ENTITY),
+            "ota_manifest_url": entry.options.get(CONF_OTA_MANIFEST_URL),
         },
         "runtime": {
             "available": runtime.available,

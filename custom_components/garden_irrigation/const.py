@@ -21,6 +21,7 @@ CONF_PROTOCOL_SCHEMA = "protocol_schema"
 CONF_BOARD = "board"
 CONF_CHIP = "chip"
 CONF_WEATHER_ENTITY = "weather_entity"
+CONF_OTA_MANIFEST_URL = "ota_manifest_url"
 
 DEFAULT_DEVICE_ID = "xiao-esp32c6-1"
 DEFAULT_PROTOCOL_SCHEMA = "garden-irrigation-mqtt/v1"

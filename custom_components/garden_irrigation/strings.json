@@ -32,12 +32,14 @@
         "title": "Garden Irrigation options",
         "description": "Configure the optional weather guard used by local schedules. Leave empty to disable weather-based blocking.",
         "data": {
-          "weather_entity": "Weather entity"
+          "weather_entity": "Weather entity",
+          "ota_manifest_url": "Firmware OTA manifest URL"
         }
       }
     },
     "error": {
-      "invalid_weather_entity": "Use a Home Assistant weather entity, for example weather.forecast_home."
+      "invalid_weather_entity": "Use a Home Assistant weather entity, for example weather.forecast_home.",
+      "invalid_ota_manifest_url": "Use a full HTTPS URL to a Garden Irrigation OTA manifest."
     }
   }
 }
