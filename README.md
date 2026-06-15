@@ -147,10 +147,5 @@ entity ID prefix before importing it.
 ## Development Checks
 
 ```sh
-python3 -m json.tool hacs.json >/dev/null
-python3 -m json.tool custom_components/garden_irrigation/manifest.json >/dev/null
-python3 -m json.tool custom_components/garden_irrigation/strings.json >/dev/null
-find tests/fixtures -name '*.json' -print0 | xargs -0 -r -n1 python3 -m json.tool >/dev/null
-python3 -m compileall -q custom_components/garden_irrigation tests
-python3 -m unittest discover -s tests
+scripts/ha-integration-release-check.sh
 ```
