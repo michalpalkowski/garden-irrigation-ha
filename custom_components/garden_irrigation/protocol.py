@@ -28,6 +28,7 @@ _HEX_32_RE: Final = re.compile(r"^[0-9a-fA-F]{64}$")
 _ECDSA_P256_SIGNATURE_RE: Final = re.compile(r"^[0-9a-fA-F]{128}$")
 _CHALLENGE_RE: Final = re.compile(r"^[0-9a-fA-F]{32}$")
 _TOKEN_RE: Final = re.compile(r"^[A-Za-z0-9_.-]{1,48}$")
+_BUILD_ID_RE: Final = re.compile(r"^[A-Za-z0-9_.-]{1,96}$")
 _HOST_RE: Final = re.compile(r"^[A-Za-z0-9.-]{1,63}$")
 _PATH_RE: Final = re.compile(r"^/[A-Za-z0-9/._%:-]{1,95}$")
 _FACTORY_ID_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{5,63}$")
@@ -81,6 +82,15 @@ class OtaImage:
 
 
 @dataclass(frozen=True)
+class OtaSignature:
+    """Validated signature metadata from an OTA manifest."""
+
+    algorithm: str
+    format: str
+    value: str
+
+
+@dataclass(frozen=True)
 class OtaManifest:
     """Validated Garden OTA manifest."""
 
@@ -89,7 +99,50 @@ class OtaManifest:
     board: str
     chip: str
     version: str
+    build_id: str
+    channel: str
+    provisioning_required: bool
     image: OtaImage
+    signature: OtaSignature
+
+
+@dataclass(frozen=True)
+class NetworkStatus:
+    """Validated controller telemetry published on network/status."""
+
+    board: str
+    chip: str
+    version: str
+    build_id: str
+    runtime_config_persisted: bool
+    phase: str
+    reason: str
+    reset_reason: str
+    mqtt_reconnects: int
+    uptime_seconds: int
+    free_heap_bytes: int
+    min_free_heap_bytes: int
+    heap_used_bytes: int
+    chip_temperature_celsius: int | None
+
+    def as_dict(self) -> dict[str, object]:
+        """Return a JSON-compatible representation for HA attributes."""
+        return {
+            "board": self.board,
+            "chip": self.chip,
+            "version": self.version,
+            "build_id": self.build_id,
+            "runtime_config_persisted": self.runtime_config_persisted,
+            "phase": self.phase,
+            "reason": self.reason,
+            "reset_reason": self.reset_reason,
+            "mqtt_reconnects": self.mqtt_reconnects,
+            "uptime_seconds": self.uptime_seconds,
+            "free_heap_bytes": self.free_heap_bytes,
+            "min_free_heap_bytes": self.min_free_heap_bytes,
+            "heap_used_bytes": self.heap_used_bytes,
+            "chip_temperature_celsius": self.chip_temperature_celsius,
+        }
 
 
 @dataclass(frozen=True)
@@ -101,6 +154,7 @@ class OtaRequest:
     board: str
     chip: str
     version: str
+    build_id: str
     channel: str
     host: str
     port: int
@@ -531,6 +585,16 @@ def ota_challenge_topic(base_topic: str) -> str:
     return topic(base_topic, "ota/challenge")
 
 
+def ota_request_topic(base_topic: str) -> str:
+    """Return the controller OTA request topic."""
+    return topic(base_topic, "ota/request")
+
+
+def ota_confirm_topic(base_topic: str) -> str:
+    """Return the controller OTA confirmation topic."""
+    return topic(base_topic, "ota/confirm")
+
+
 def zone_state_topic(base_topic: str, zone: int) -> str:
     """Return a zone state topic."""
     return topic(base_topic, f"zone/{validate_zone(zone)}/state")
@@ -562,6 +626,14 @@ def parse_availability(payload: str) -> Availability:
         return Availability(payload.strip())
     except ValueError as exc:
         raise ProtocolError("invalid availability payload") from exc
+
+
+def parse_ota_challenge(payload: str) -> str:
+    """Validate a retained OTA challenge published by firmware."""
+    challenge = payload.strip().lower()
+    if not _CHALLENGE_RE.fullmatch(challenge):
+        raise ProtocolError("invalid OTA challenge")
+    return challenge
 
 
 def parse_zone_state(payload: str) -> ZoneState:
@@ -601,7 +673,7 @@ def parse_wifi_rssi(payload: str) -> int:
     return rssi
 
 
-def parse_network_status(payload: str) -> dict[str, Any]:
+def parse_network_status(payload: str) -> NetworkStatus:
     """Parse the firmware network status JSON payload."""
     try:
         parsed = json.loads(payload)
@@ -609,7 +681,23 @@ def parse_network_status(payload: str) -> dict[str, Any]:
         raise ProtocolError("network status must be JSON") from exc
     if not isinstance(parsed, dict):
         raise ProtocolError("network status must be an object")
-    return parsed
+
+    return NetworkStatus(
+        board=_required_str(parsed, "board"),
+        chip=_required_str(parsed, "chip"),
+        version=_required_str(parsed, "version"),
+        build_id=_required_str(parsed, "build_id"),
+        runtime_config_persisted=_required_bool(parsed, "runtime_config_persisted"),
+        phase=_required_str(parsed, "phase"),
+        reason=_required_str(parsed, "reason"),
+        reset_reason=_required_str(parsed, "reset_reason"),
+        mqtt_reconnects=_required_non_negative_int(parsed, "mqtt_reconnects"),
+        uptime_seconds=_required_non_negative_int(parsed, "uptime_seconds"),
+        free_heap_bytes=_required_non_negative_int(parsed, "free_heap_bytes"),
+        min_free_heap_bytes=_required_non_negative_int(parsed, "min_free_heap_bytes"),
+        heap_used_bytes=_required_non_negative_int(parsed, "heap_used_bytes"),
+        chip_temperature_celsius=_optional_int(parsed, "chip_temperature_celsius"),
+    )
 
 
 def wifi_quality_percent(rssi: int) -> int:
@@ -675,15 +763,24 @@ def parse_ota_manifest(payload: dict[str, object]) -> OtaManifest:
         raise ProtocolError("OTA manifest application mismatch")
 
     image_payload = payload.get("image")
+    signature_payload = payload.get("signature")
     if not isinstance(image_payload, dict):
         raise ProtocolError("OTA manifest image is required")
+    if not isinstance(signature_payload, dict):
+        raise ProtocolError("OTA manifest signature is required")
 
     board = _required_str(payload, "board")
     chip = _required_str(payload, "chip")
     version = _required_str(payload, "version")
+    build_id = _required_str(payload, "build_id")
+    channel = _required_str(payload, "channel")
+    provisioning_required = _required_bool(payload, "provisioning_required")
     image_file = _required_str(image_payload, "file")
     sha256 = _required_str(image_payload, "sha256").lower()
     size_bytes = _required_int(image_payload, "size_bytes")
+    signature_algorithm = _required_str(signature_payload, "algorithm")
+    signature_format = _required_str(signature_payload, "format")
+    signature_value = _required_str(signature_payload, "value").lower()
 
     if not _TOPIC_PART_RE.fullmatch(board):
         raise ProtocolError("invalid OTA board")
@@ -695,6 +792,16 @@ def parse_ota_manifest(payload: dict[str, object]) -> OtaManifest:
         raise ProtocolError("OTA image size must be positive")
     if not _HEX_32_RE.fullmatch(sha256):
         raise ProtocolError("OTA image sha256 must be 64 hex characters")
+    if not _BUILD_ID_RE.fullmatch(build_id):
+        raise ProtocolError("invalid OTA build_id")
+    if channel not in {"stable", "beta"}:
+        raise ProtocolError("invalid OTA channel")
+    if signature_algorithm != "ecdsa-p256-sha256":
+        raise ProtocolError("unsupported OTA signature algorithm")
+    if signature_format != "raw-r-s-hex":
+        raise ProtocolError("unsupported OTA signature format")
+    if not _ECDSA_P256_SIGNATURE_RE.fullmatch(signature_value):
+        raise ProtocolError("OTA signature must be 128 hex characters")
 
     return OtaManifest(
         product=OTA_PRODUCT,
@@ -702,7 +809,15 @@ def parse_ota_manifest(payload: dict[str, object]) -> OtaManifest:
         board=board,
         chip=chip,
         version=version,
+        build_id=build_id,
+        channel=channel,
+        provisioning_required=provisioning_required,
         image=OtaImage(file=image_file, size_bytes=size_bytes, sha256=sha256),
+        signature=OtaSignature(
+            algorithm=signature_algorithm,
+            format=signature_format,
+            value=signature_value,
+        ),
     )
 
 
@@ -716,6 +831,7 @@ def ota_signed_manifest_message(request: OtaRequest) -> str:
         ("board", request.board),
         ("chip", request.chip),
         ("version", request.version),
+        ("build_id", request.build_id),
         ("channel", request.channel),
         ("size", str(request.size_bytes)),
         ("sha256", request.sha256.lower()),
@@ -733,6 +849,7 @@ def build_ota_request_payload(request: OtaRequest) -> str:
         ("board", request.board),
         ("chip", request.chip),
         ("version", request.version),
+        ("build_id", request.build_id),
         ("channel", request.channel),
         ("host", request.host),
         ("port", str(request.port)),
@@ -773,8 +890,32 @@ def _required_str(payload: dict[str, object], key: str) -> str:
 
 def _required_int(payload: dict[str, object], key: str) -> int:
     value = payload.get(key)
-    if not isinstance(value, int):
+    if not isinstance(value, int) or isinstance(value, bool):
         raise ProtocolError(f"{key} is required")
+    return value
+
+
+def _required_bool(payload: dict[str, object], key: str) -> bool:
+    """Return one required boolean without accepting integer coercion."""
+    value = payload.get(key)
+    if not isinstance(value, bool):
+        raise ProtocolError(f"{key} is required")
+    return value
+
+
+def _required_non_negative_int(payload: dict[str, object], key: str) -> int:
+    value = _required_int(payload, key)
+    if value < 0:
+        raise ProtocolError(f"{key} must be non-negative")
+    return value
+
+
+def _optional_int(payload: dict[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ProtocolError(f"{key} must be an integer or null")
     return value
 
 
@@ -787,6 +928,8 @@ def _validate_ota_request(request: OtaRequest) -> None:
         raise ProtocolError("invalid OTA request board")
     if not _TOPIC_PART_RE.fullmatch(request.chip):
         raise ProtocolError("invalid OTA request chip")
+    if not _BUILD_ID_RE.fullmatch(request.build_id):
+        raise ProtocolError("invalid OTA request build_id")
     if request.channel not in {"stable", "beta"}:
         raise ProtocolError("invalid OTA request channel")
     if not _HOST_RE.fullmatch(request.host):

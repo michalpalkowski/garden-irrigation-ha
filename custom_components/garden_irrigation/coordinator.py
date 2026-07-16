@@ -29,6 +29,7 @@ from .const import (
     WEEKDAYS,
 )
 from . import protocol
+from .fault_diagnostics import OutageDiagnosis, classify_outage
 from .weather_policy import (
     ForecastItem,
     WeatherDecision,
@@ -65,8 +66,18 @@ class GardenControllerState:
     availability: protocol.Availability | None = None
     controller_state: str | None = None
     diagnostics: str | None = None
-    network_status: dict[str, Any] | None = None
+    network_status: protocol.NetworkStatus | None = None
+    network_status_received_at: dt.datetime | None = None
+    network_status_sequence: int = 0
     wifi_rssi: int | None = None
+    ota_challenge: str | None = None
+    ota_challenge_sequence: int = 0
+    diagnostics_sequence: int = 0
+    outage_started_at: dt.datetime | None = None
+    outage_status_snapshot: protocol.NetworkStatus | None = None
+    outage_wifi_rssi_snapshot: int | None = None
+    awaiting_recovery_status: bool = False
+    last_outage: OutageDiagnosis | None = None
     rain_probability_skip_percent: float = DEFAULT_RAIN_PROBABILITY_SKIP_PERCENT
     precipitation_skip_mm: float = DEFAULT_PRECIPITATION_SKIP_MM
     humidity_skip_percent: float = DEFAULT_HUMIDITY_SKIP_PERCENT
@@ -123,6 +134,7 @@ class GardenIrrigationRuntime:
             protocol.diagnostics_topic(self.base_topic),
             protocol.network_status_topic(self.base_topic),
             protocol.wifi_signal_topic(self.base_topic),
+            protocol.ota_challenge_topic(self.base_topic),
         ]
         for zone in range(DEFAULT_ZONE_COUNT):
             topics.extend(
@@ -186,6 +198,18 @@ class GardenIrrigationRuntime:
     async def async_stop_all(self) -> None:
         """Publish a safe stop-all command."""
         await self._async_publish(protocol.stop_all_publish(self.base_topic))
+
+    async def async_publish_ota_request(self, payload: str) -> None:
+        """Publish one validated, non-retained OTA request."""
+        await self._async_publish(
+            (protocol.ota_request_topic(self.base_topic), payload, 0, False)
+        )
+
+    async def async_confirm_ota(self, payload: str) -> None:
+        """Publish one non-retained OTA boot confirmation."""
+        await self._async_publish(
+            (protocol.ota_confirm_topic(self.base_topic), payload, 0, False)
+        )
 
     async def async_set_duration_minutes(self, zone: int, minutes: int) -> None:
         """Set the Home Assistant manual start duration for one zone."""
@@ -266,18 +290,74 @@ class GardenIrrigationRuntime:
     def _handle_mqtt_message(self, message: Any) -> None:
         topic = message.topic
         payload = str(message.payload)
+        now = dt.datetime.now(dt.UTC)
 
         try:
             if topic == protocol.availability_topic(self.base_topic):
-                self.state.availability = protocol.parse_availability(payload)
+                availability = protocol.parse_availability(payload)
+                previous = self.state.availability
+                self.state.availability = availability
+                if (
+                    availability == protocol.Availability.OFFLINE
+                    and previous != protocol.Availability.OFFLINE
+                ):
+                    self.state.outage_started_at = now
+                    self.state.outage_status_snapshot = self.state.network_status
+                    self.state.outage_wifi_rssi_snapshot = self.state.wifi_rssi
+                    self.state.awaiting_recovery_status = False
+                    self.state.last_outage = classify_outage(
+                        detected_at=now,
+                        recovered_at=None,
+                        last_status=self.state.outage_status_snapshot,
+                        recovered_status=None,
+                        last_wifi_rssi=self.state.outage_wifi_rssi_snapshot,
+                    )
+                elif (
+                    availability == protocol.Availability.ONLINE
+                    and previous == protocol.Availability.OFFLINE
+                    and self.state.outage_started_at is not None
+                ):
+                    received_at = self.state.network_status_received_at
+                    if (
+                        received_at is not None
+                        and received_at > self.state.outage_started_at
+                    ):
+                        self.state.last_outage = classify_outage(
+                            detected_at=self.state.outage_started_at,
+                            recovered_at=now,
+                            last_status=self.state.outage_status_snapshot,
+                            recovered_status=self.state.network_status,
+                            last_wifi_rssi=self.state.outage_wifi_rssi_snapshot,
+                        )
+                        self.state.awaiting_recovery_status = False
+                    else:
+                        self.state.awaiting_recovery_status = True
             elif topic == protocol.state_topic(self.base_topic):
                 self.state.controller_state = payload
             elif topic == protocol.diagnostics_topic(self.base_topic):
                 self.state.diagnostics = payload
+                self.state.diagnostics_sequence += 1
             elif topic == protocol.network_status_topic(self.base_topic):
                 self.state.network_status = protocol.parse_network_status(payload)
+                self.state.network_status_received_at = now
+                self.state.network_status_sequence += 1
+                if (
+                    self.state.awaiting_recovery_status
+                    and self.state.outage_started_at is not None
+                ):
+                    self.state.last_outage = classify_outage(
+                        detected_at=self.state.outage_started_at,
+                        recovered_at=now,
+                        last_status=self.state.outage_status_snapshot,
+                        recovered_status=self.state.network_status,
+                        last_wifi_rssi=self.state.outage_wifi_rssi_snapshot,
+                    )
+                    self.state.awaiting_recovery_status = False
             elif topic == protocol.wifi_signal_topic(self.base_topic):
                 self.state.wifi_rssi = protocol.parse_wifi_rssi(payload)
+            elif topic == protocol.ota_challenge_topic(self.base_topic):
+                self.state.ota_challenge = protocol.parse_ota_challenge(payload)
+                self.state.ota_challenge_sequence += 1
             else:
                 self._handle_zone_message(topic, payload)
         except protocol.ProtocolError as exc:
@@ -305,6 +385,7 @@ class GardenIrrigationRuntime:
     @callback
     def _handle_schedule_tick(self, now: dt.datetime) -> None:
         """Schedule async irrigation checks from the HA event loop."""
+        self._async_notify_listeners()
         self.hass.async_create_task(self.async_check_schedule(now))
 
     async def async_check_schedule(self, now: dt.datetime) -> None:

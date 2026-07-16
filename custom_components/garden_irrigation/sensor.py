@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import datetime as dt
 from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -24,19 +26,14 @@ from .entity import GardenIrrigationEntity
 from .protocol import wifi_quality_percent, wifi_status_label
 
 
-@dataclass(frozen=True)
-class GardenSensorDescription:
+@dataclass(frozen=True, kw_only=True)
+class GardenSensorDescription(SensorEntityDescription):
     """Description for a Garden Irrigation sensor."""
 
-    key: str
-    name: str
-    value_fn: Callable[[GardenIrrigationRuntime], str | int | float | None]
+    value_fn: Callable[
+        [GardenIrrigationRuntime], str | int | float | dt.datetime | None
+    ]
     attrs_fn: Callable[[GardenIrrigationRuntime], dict[str, Any]] | None = None
-    icon: str | None = None
-    unit: str | None = None
-    device_class: SensorDeviceClass | None = None
-    state_class: SensorStateClass | None = None
-    entity_category: EntityCategory | None = None
     always_available: bool = False
 
 
@@ -72,10 +69,130 @@ async def async_setup_entry(
             GardenSensorDescription(
                 key="network_status",
                 name="Network status",
-                value_fn=_network_status_value,
-                attrs_fn=lambda item: item.state.network_status or {},
+                value_fn=_network_status_compact_value,
+                attrs_fn=lambda item: (
+                    item.state.network_status.as_dict()
+                    if item.state.network_status is not None
+                    else {}
+                ),
                 icon="mdi:lan-connect",
                 entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="reset_reason",
+                name="Reset reason",
+                value_fn=lambda item: _network_status_text_value(
+                    item, "reset_reason"
+                ),
+                icon="mdi:restart-alert",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="telemetry_last_seen",
+                name="Telemetry last seen",
+                value_fn=lambda item: item.state.network_status_received_at,
+                icon="mdi:clock-check-outline",
+                device_class=SensorDeviceClass.TIMESTAMP,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="telemetry_age_seconds",
+                name="Telemetry age",
+                value_fn=_telemetry_age_seconds,
+                icon="mdi:timer-alert-outline",
+                native_unit_of_measurement="s",
+                device_class=SensorDeviceClass.DURATION,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="last_outage_cause",
+                name="Last outage cause",
+                value_fn=lambda item: (
+                    item.state.last_outage.cause.value
+                    if item.state.last_outage is not None
+                    else None
+                ),
+                attrs_fn=lambda item: (
+                    item.state.last_outage.as_attributes()
+                    if item.state.last_outage is not None
+                    else {}
+                ),
+                icon="mdi:alert-decagram-outline",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="free_heap_bytes",
+                name="Free heap",
+                value_fn=lambda item: _network_status_int(item, "free_heap_bytes"),
+                icon="mdi:memory",
+                native_unit_of_measurement="B",
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="min_free_heap_bytes",
+                name="Min free heap",
+                value_fn=lambda item: _network_status_int(
+                    item, "min_free_heap_bytes"
+                ),
+                icon="mdi:memory",
+                native_unit_of_measurement="B",
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="heap_used_bytes",
+                name="Heap used",
+                value_fn=lambda item: _network_status_int(item, "heap_used_bytes"),
+                icon="mdi:memory",
+                native_unit_of_measurement="B",
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
+                key="chip_temperature_celsius",
+                name="Chip temperature",
+                value_fn=lambda item: _network_status_int(
+                    item, "chip_temperature_celsius"
+                ),
+                icon="mdi:thermometer",
+                native_unit_of_measurement="°C",
+                device_class=SensorDeviceClass.TEMPERATURE,
+                state_class=SensorStateClass.MEASUREMENT,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
             ),
         ),
         GardenRuntimeSensor(
@@ -85,7 +202,7 @@ async def async_setup_entry(
                 name="Wi-Fi signal",
                 value_fn=lambda item: item.state.wifi_rssi,
                 icon="mdi:wifi",
-                unit="dBm",
+                native_unit_of_measurement="dBm",
                 device_class=SensorDeviceClass.SIGNAL_STRENGTH,
                 state_class=SensorStateClass.MEASUREMENT,
                 entity_category=EntityCategory.DIAGNOSTIC,
@@ -108,7 +225,7 @@ async def async_setup_entry(
                     else None,
                 },
                 icon="mdi:wifi-strength-3",
-                unit=PERCENTAGE,
+                native_unit_of_measurement=PERCENTAGE,
                 state_class=SensorStateClass.MEASUREMENT,
                 entity_category=EntityCategory.DIAGNOSTIC,
             ),
@@ -183,7 +300,7 @@ async def async_setup_entry(
                             zone
                         ].run_seconds,
                         icon="mdi:timer-sync-outline",
-                        unit=UnitOfTime.SECONDS,
+                        native_unit_of_measurement=UnitOfTime.SECONDS,
                         device_class=SensorDeviceClass.DURATION,
                         state_class=SensorStateClass.TOTAL_INCREASING,
                     ),
@@ -199,7 +316,7 @@ async def async_setup_entry(
                             else None
                         ),
                         icon="mdi:timer-outline",
-                        unit=UnitOfTime.MINUTES,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
                         device_class=SensorDeviceClass.DURATION,
                         state_class=SensorStateClass.TOTAL_INCREASING,
                     ),
@@ -223,7 +340,7 @@ class GardenRuntimeSensor(GardenIrrigationEntity, SensorEntity):
         self.entity_description = description
         self._attr_name = description.name
         self._attr_icon = description.icon
-        self._attr_native_unit_of_measurement = description.unit
+        self._attr_native_unit_of_measurement = description.native_unit_of_measurement
         self._attr_device_class = description.device_class
         self._attr_state_class = description.state_class
         self._attr_entity_category = description.entity_category
@@ -236,7 +353,7 @@ class GardenRuntimeSensor(GardenIrrigationEntity, SensorEntity):
         return super().available
 
     @property
-    def native_value(self) -> str | int | float | None:
+    def native_value(self) -> str | int | float | dt.datetime | None:
         """Return the current sensor value."""
         return self.entity_description.value_fn(self.runtime)
 
@@ -248,13 +365,44 @@ class GardenRuntimeSensor(GardenIrrigationEntity, SensorEntity):
         return self.entity_description.attrs_fn(self.runtime)
 
 
-def _network_status_value(runtime: GardenIrrigationRuntime) -> str | None:
+def _network_status_compact_value(
+    runtime: GardenIrrigationRuntime,
+) -> str | None:
     """Return a compact network status state."""
     status = runtime.state.network_status
     if status is None:
         return None
-    for key in ("reason", "phase", "status"):
-        value = status.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return "online"
+    return status.reason or status.phase
+
+
+def _network_status_text_value(
+    runtime: GardenIrrigationRuntime, key: str
+) -> str | None:
+    """Return a named string value from the network status payload."""
+    status = runtime.state.network_status
+    if status is None:
+        return None
+    value = getattr(status, key, None)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _network_status_int(runtime: GardenIrrigationRuntime, key: str) -> int | None:
+    """Return a named integer value from the network status payload."""
+    status = runtime.state.network_status
+    if status is None:
+        return None
+    value = getattr(status, key, None)
+    if not isinstance(value, int) or isinstance(value, bool):
+        return None
+    return value
+
+
+def _telemetry_age_seconds(runtime: GardenIrrigationRuntime) -> int | None:
+    """Return age of the last validated network status sample."""
+    received_at = runtime.state.network_status_received_at
+    if received_at is None:
+        return None
+    return max(0, int((dt.datetime.now(dt.UTC) - received_at).total_seconds()))

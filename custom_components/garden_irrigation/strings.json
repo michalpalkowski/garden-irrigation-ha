@@ -30,16 +30,22 @@
     "step": {
       "init": {
         "title": "Garden Irrigation options",
-        "description": "Configure the optional weather guard used by local schedules. Leave empty to disable weather-based blocking.",
+        "description": "Configure weather guard and one firmware release source. Public GitHub releases need no token; private repositories require a fine-grained read-only token.",
         "data": {
           "weather_entity": "Weather entity",
-          "ota_manifest_url": "Firmware OTA manifest URL"
+          "ota_manifest_url": "Firmware OTA manifest URL",
+          "ota_github_repository": "Firmware GitHub repository (owner/repo)",
+          "ota_github_token": "GitHub read-only token"
         }
       }
     },
     "error": {
       "invalid_weather_entity": "Use a Home Assistant weather entity, for example weather.forecast_home.",
-      "invalid_ota_manifest_url": "Use a full HTTPS URL to a Garden Irrigation OTA manifest."
+      "invalid_ota_manifest_url": "Use a full HTTPS URL to a Garden Irrigation OTA manifest.",
+      "invalid_ota_github_repository": "Use owner/repository format.",
+      "incomplete_ota_github_credentials": "Repository and token must be configured together.",
+      "invalid_ota_github_token": "Use a valid fine-grained GitHub token.",
+      "multiple_ota_sources": "Configure either a manifest URL or a GitHub repository, not both."
     }
   }
 }

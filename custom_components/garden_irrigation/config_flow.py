@@ -12,6 +12,7 @@ from homeassistant.components import mqtt
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.service_info.mqtt import MqttServiceInfo
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_BASE_TOPIC,
@@ -19,8 +20,11 @@ from .const import (
     CONF_CHIP,
     CONF_DEVICE_ID,
     CONF_OTA_MANIFEST_URL,
+    CONF_OTA_GITHUB_REPOSITORY,
+    CONF_OTA_GITHUB_TOKEN,
     CONF_PROTOCOL_SCHEMA,
     CONF_WEATHER_ENTITY,
+    DEFAULT_OTA_GITHUB_REPOSITORY,
     DOMAIN,
 )
 from .options import validate_options
@@ -232,12 +236,25 @@ class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
                 options = validate_options(
                     user_input.get(CONF_WEATHER_ENTITY),
                     user_input.get(CONF_OTA_MANIFEST_URL),
+                    user_input.get(CONF_OTA_GITHUB_REPOSITORY),
+                    user_input.get(CONF_OTA_GITHUB_TOKEN),
                 )
             except ValueError as exc:
                 if str(exc) == "invalid_weather_entity":
                     errors[CONF_WEATHER_ENTITY] = "invalid_weather_entity"
                 elif str(exc) == "invalid_ota_manifest_url":
                     errors[CONF_OTA_MANIFEST_URL] = "invalid_ota_manifest_url"
+                elif str(exc) == "invalid_ota_github_repository":
+                    errors[CONF_OTA_GITHUB_REPOSITORY] = (
+                        "invalid_ota_github_repository"
+                    )
+                elif str(exc) in {
+                    "incomplete_ota_github_credentials",
+                    "invalid_ota_github_token",
+                }:
+                    errors[CONF_OTA_GITHUB_TOKEN] = str(exc)
+                elif str(exc) == "multiple_ota_sources":
+                    errors["base"] = "multiple_ota_sources"
                 else:
                     errors["base"] = "invalid_options"
             else:
@@ -246,6 +263,8 @@ class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
                     data={
                         CONF_WEATHER_ENTITY: options.weather_entity,
                         CONF_OTA_MANIFEST_URL: options.ota_manifest_url,
+                        CONF_OTA_GITHUB_REPOSITORY: options.ota_github_repository,
+                        CONF_OTA_GITHUB_TOKEN: options.ota_github_token,
                     },
                 )
 
@@ -264,6 +283,30 @@ class GardenIrrigationOptionsFlow(config_entries.OptionsFlow):
                             "",
                         ),
                     ): str,
+                    vol.Optional(
+                        CONF_OTA_GITHUB_REPOSITORY,
+                        default=self.config_entry.options.get(
+                            CONF_OTA_GITHUB_REPOSITORY,
+                            (
+                                ""
+                                if self.config_entry.options.get(
+                                    CONF_OTA_MANIFEST_URL
+                                )
+                                else DEFAULT_OTA_GITHUB_REPOSITORY
+                            ),
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_OTA_GITHUB_TOKEN,
+                        default=self.config_entry.options.get(
+                            CONF_OTA_GITHUB_TOKEN,
+                            "",
+                        ),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
+                        )
+                    ),
                 }
             ),
             errors=errors,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-from .protocol import OtaManifest, ProtocolError
+from .protocol import NetworkStatus, OtaManifest, ProtocolError
 
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
 
@@ -18,6 +18,7 @@ class FirmwareStatus:
     build_id: str | None
     board: str | None
     chip: str | None
+    runtime_config_persisted: bool
 
     @property
     def display_version(self) -> str | None:
@@ -39,15 +40,18 @@ class FirmwareUpdateMetadata:
 
 
 def firmware_status_from_network_status(
-    network_status: dict[str, object] | None,
+    network_status: NetworkStatus | None,
 ) -> FirmwareStatus:
     """Extract firmware identity from the MQTT network status payload."""
-    status = network_status or {}
+    status = network_status
     return FirmwareStatus(
-        version=_optional_string(status.get("version")),
-        build_id=_optional_string(status.get("build_id")),
-        board=_optional_string(status.get("board")),
-        chip=_optional_string(status.get("chip")),
+        version=status.version if status is not None else None,
+        build_id=status.build_id if status is not None else None,
+        board=status.board if status is not None else None,
+        chip=status.chip if status is not None else None,
+        runtime_config_persisted=(
+            status.runtime_config_persisted if status is not None else False
+        ),
     )
 
 
@@ -66,19 +70,32 @@ def evaluate_firmware_update(
         raise ProtocolError("OTA manifest board does not match controller board")
     if installed.chip and manifest.chip != installed.chip:
         raise ProtocolError("OTA manifest chip does not match controller chip")
+    if manifest.provisioning_required and not installed.runtime_config_persisted:
+        return FirmwareUpdateMetadata(
+            latest_version=installed.display_version,
+            update_available=False,
+            reason=(
+                "Release requires runtime provisioning and cannot replace an "
+                "operator-configured controller."
+            ),
+        )
     if installed.version is None:
         return FirmwareUpdateMetadata(
             latest_version=manifest.version,
             update_available=False,
             reason="Controller has not reported an installed firmware version yet.",
         )
-    update_available = compare_versions(manifest.version, installed.version) > 0
+    version_order = compare_versions(manifest.version, installed.version)
+    update_available = version_order > 0 or (
+        version_order == 0 and manifest.build_id != installed.build_id
+    )
+    latest_display_version = f"{manifest.version}+{manifest.build_id}"
     return FirmwareUpdateMetadata(
-        latest_version=manifest.version
+        latest_version=latest_display_version
         if update_available
         else installed.display_version,
         update_available=update_available,
-        reason="OTA manifest is newer."
+        reason="OTA release has a newer version or build."
         if update_available
         else "Installed firmware is current for the configured OTA manifest.",
     )

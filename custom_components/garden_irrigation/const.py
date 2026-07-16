@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import time
 
 DOMAIN = "garden_irrigation"
+DATA_RUNTIMES = "runtimes"
+DATA_OTA_ARTIFACTS = "ota_artifacts"
+DATA_OTA_VIEW_REGISTERED = "ota_view_registered"
 PLATFORMS = [
     "binary_sensor",
     "button",
@@ -22,6 +25,8 @@ CONF_BOARD = "board"
 CONF_CHIP = "chip"
 CONF_WEATHER_ENTITY = "weather_entity"
 CONF_OTA_MANIFEST_URL = "ota_manifest_url"
+CONF_OTA_GITHUB_REPOSITORY = "ota_github_repository"
+CONF_OTA_GITHUB_TOKEN = "ota_github_token"
 
 DEFAULT_DEVICE_ID = "xiao-esp32c6-1"
 DEFAULT_PROTOCOL_SCHEMA = "garden-irrigation-mqtt/v1"
@@ -35,6 +40,7 @@ DEFAULT_RAIN_PROBABILITY_SKIP_PERCENT = 35
 DEFAULT_PRECIPITATION_SKIP_MM = 0.1
 DEFAULT_HUMIDITY_SKIP_PERCENT = 80
 DEFAULT_RAIN_LOOKAHEAD_HOURS = 24
+DEFAULT_OTA_GITHUB_REPOSITORY = "michalpalkowski/garden-irrigation-firmware"
 WEEKDAYS = (
     (0, "monday", "Monday"),
     (1, "tuesday", "Tuesday"),

@@ -11,8 +11,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 import homeassistant.helpers.config_validation as cv
 
-from .const import DOMAIN, PLATFORMS
+from .const import DATA_RUNTIMES, DOMAIN, PLATFORMS
 from .coordinator import GardenIrrigationRuntime
+from .ota_http import async_register_ota_view
 from .protocol import MAX_DURATION_MINUTES, validate_zone
 
 type GardenIrrigationConfigEntry = ConfigEntry[GardenIrrigationRuntime]
@@ -52,7 +53,8 @@ STOP_ALL_SCHEMA = vol.Schema(SERVICE_TARGET_SCHEMA)
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up Garden Irrigation services."""
-    hass.data.setdefault(DOMAIN, {})
+    hass.data.setdefault(DOMAIN, {}).setdefault(DATA_RUNTIMES, {})
+    async_register_ota_view(hass)
 
     async def _handle_start_zone(call: Any) -> None:
         runtime = _runtime_from_service_call(hass, call.data)
@@ -96,7 +98,7 @@ async def async_setup_entry(
     runtime = GardenIrrigationRuntime(hass, entry)
     await runtime.async_start()
     entry.runtime_data = runtime
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    hass.data[DOMAIN][DATA_RUNTIMES][entry.entry_id] = runtime
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -110,7 +112,7 @@ async def async_unload_entry(
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     await entry.runtime_data.async_stop()
     if unload_ok:
-        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+        hass.data.get(DOMAIN, {}).get(DATA_RUNTIMES, {}).pop(entry.entry_id, None)
     return unload_ok
 
 
@@ -127,7 +129,9 @@ def _runtime_from_service_call(
     data: dict[str, Any],
 ) -> GardenIrrigationRuntime:
     """Resolve a configured runtime from a service call."""
-    runtimes: dict[str, GardenIrrigationRuntime] = hass.data.get(DOMAIN, {})
+    runtimes: dict[str, GardenIrrigationRuntime] = hass.data.get(DOMAIN, {}).get(
+        DATA_RUNTIMES, {}
+    )
     entry_id = data.get(ATTR_ENTRY_ID)
     device_id = data.get(ATTR_DEVICE_ID)
 

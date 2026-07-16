@@ -12,6 +12,8 @@ from .const import (
     CONF_BOARD,
     CONF_CHIP,
     CONF_DEVICE_ID,
+    CONF_OTA_GITHUB_REPOSITORY,
+    CONF_OTA_GITHUB_TOKEN,
     CONF_OTA_MANIFEST_URL,
     CONF_WEATHER_ENTITY,
 )
@@ -32,6 +34,10 @@ async def async_get_config_entry_diagnostics(
             "chip": entry.data.get(CONF_CHIP),
             "weather_entity": entry.options.get(CONF_WEATHER_ENTITY),
             "ota_manifest_url": entry.options.get(CONF_OTA_MANIFEST_URL),
+            "ota_github_repository": entry.options.get(CONF_OTA_GITHUB_REPOSITORY),
+            "ota_github_token_configured": bool(
+                entry.options.get(CONF_OTA_GITHUB_TOKEN)
+            ),
         },
         "runtime": {
             "available": runtime.available,
@@ -42,7 +48,24 @@ async def async_get_config_entry_diagnostics(
             ),
             "controller_state": runtime.state.controller_state,
             "diagnostics": redact_diagnostics_payload(runtime.state.diagnostics),
-            "network_status": redact_diagnostics_payload(runtime.state.network_status),
+            "network_status": redact_diagnostics_payload(
+                runtime.state.network_status.as_dict()
+                if runtime.state.network_status is not None
+                else None
+            ),
+            "network_status_received_at": (
+                runtime.state.network_status_received_at.isoformat()
+                if runtime.state.network_status_received_at is not None
+                else None
+            ),
+            "last_outage": (
+                {
+                    "cause": runtime.state.last_outage.cause.value,
+                    **runtime.state.last_outage.as_attributes(),
+                }
+                if runtime.state.last_outage is not None
+                else None
+            ),
             "wifi_rssi": runtime.state.wifi_rssi,
             "weather_guard": {
                 "rain_probability_skip_percent": (
