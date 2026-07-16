@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
 import unittest
 
-_POLICY_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "custom_components"
-    / "garden_irrigation"
-    / "weather_policy.py"
-)
+from garden_irrigation_test_support import COMPONENT_PATH
+
+_POLICY_PATH = COMPONENT_PATH / "weather_policy.py"
 _SPEC = importlib.util.spec_from_file_location(
     "garden_irrigation_weather_policy",
     _POLICY_PATH,

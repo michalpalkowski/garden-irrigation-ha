@@ -8,11 +8,10 @@ import sys
 import types
 import unittest
 
-_ROOT = Path(__file__).resolve().parents[1]
-_COMPONENT_PATH = _ROOT / "custom_components" / "garden_irrigation"
+from garden_irrigation_test_support import COMPONENT_PATH
 
 _PACKAGE = types.ModuleType("garden_irrigation_claimpkg")
-_PACKAGE.__path__ = [str(_COMPONENT_PATH)]  # type: ignore[attr-defined]
+_PACKAGE.__path__ = [str(COMPONENT_PATH)]  # type: ignore[attr-defined]
 sys.modules[_PACKAGE.__name__] = _PACKAGE
 
 
@@ -28,11 +27,11 @@ def _load_module(name: str, path: Path) -> object:
 
 protocol = _load_module(
     "garden_irrigation_claimpkg.protocol",
-    _COMPONENT_PATH / "protocol.py",
+    COMPONENT_PATH / "protocol.py",
 )
 claim_contract = _load_module(
     "garden_irrigation_claimpkg.claim_contract",
-    _COMPONENT_PATH / "claim_contract.py",
+    COMPONENT_PATH / "claim_contract.py",
 )
 
 

@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
 import unittest
 
-_REDACTION_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "custom_components"
-    / "garden_irrigation"
-    / "diagnostic_redaction.py"
-)
+from garden_irrigation_test_support import COMPONENT_PATH
+
+_REDACTION_PATH = COMPONENT_PATH / "diagnostic_redaction.py"
 _SPEC = importlib.util.spec_from_file_location(
     "garden_irrigation_diagnostic_redaction", _REDACTION_PATH
 )

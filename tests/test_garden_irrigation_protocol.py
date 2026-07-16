@@ -8,12 +8,9 @@ from pathlib import Path
 import sys
 import unittest
 
-_PROTOCOL_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "custom_components"
-    / "garden_irrigation"
-    / "protocol.py"
-)
+from garden_irrigation_test_support import COMPONENT_PATH
+
+_PROTOCOL_PATH = COMPONENT_PATH / "protocol.py"
 _SPEC = importlib.util.spec_from_file_location("garden_irrigation_protocol", _PROTOCOL_PATH)
 assert _SPEC is not None
 assert _SPEC.loader is not None
@@ -177,9 +174,18 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
         self.assertEqual(protocol.wifi_status_label(-63), "good")
 
         status = protocol.parse_network_status(
-            '{"phase":"mqtt","reason":"connected","uptime_seconds":42}'
+            '{"board":"xiao-esp32c6","chip":"esp32c6","version":"0.3.0",'
+            '"build_id":"abc123","phase":"mqtt","reason":"connected",'
+            '"reset_reason":"sys_brownout","runtime_config_persisted":true,'
+            '"mqtt_reconnects":2,'
+            '"uptime_seconds":42,'
+            '"free_heap_bytes":53248,"min_free_heap_bytes":49152,'
+            '"heap_used_bytes":8192,"chip_temperature_celsius":61}'
         )
-        self.assertEqual(status["reason"], "connected")
+        self.assertEqual(status.reason, "connected")
+        self.assertEqual(status.reset_reason, "sys_brownout")
+        self.assertEqual(status.free_heap_bytes, 53248)
+        self.assertEqual(status.chip_temperature_celsius, 61)
 
         for invalid in ("abc", "-200", "1.5"):
             with self.subTest(invalid=invalid):
@@ -236,16 +242,52 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
                 "board": "xiao-esp32c6",
                 "chip": "esp32c6",
                 "version": "0.1.1",
+                "build_id": "xiao-esp32c6-test",
+                "channel": "stable",
+                "provisioning_required": False,
                 "image": {
                     "file": "garden-firmware-xiao-esp32c6.bin",
                     "size_bytes": 712976,
                     "sha256": "4e23fc7f1349beef5b55d33440efca35fccb5ce28db952fd6469ebb84a31ffde",
+                },
+                "signature": {
+                    "algorithm": "ecdsa-p256-sha256",
+                    "format": "raw-r-s-hex",
+                    "value": "ab" * 64,
                 },
             }
         )
 
         self.assertEqual(manifest.board, "xiao-esp32c6")
         self.assertEqual(manifest.image.size_bytes, 712976)
+        self.assertFalse(manifest.provisioning_required)
+
+    def test_requires_explicit_ota_provisioning_mode(self) -> None:
+        with self.assertRaisesRegex(
+            protocol.ProtocolError, "provisioning_required is required"
+        ):
+            protocol.parse_ota_manifest(
+                {
+                    "schema": "garden-ota-manifest/v1",
+                    "product": "garden-irrigation",
+                    "application": "garden-firmware",
+                    "board": "xiao-esp32c6",
+                    "chip": "esp32c6",
+                    "version": "0.1.1",
+                    "build_id": "xiao-esp32c6-test",
+                    "channel": "stable",
+                    "image": {
+                        "file": "garden-firmware-xiao-esp32c6.bin",
+                        "size_bytes": 712976,
+                        "sha256": "0" * 64,
+                    },
+                    "signature": {
+                        "algorithm": "ecdsa-p256-sha256",
+                        "format": "raw-r-s-hex",
+                        "value": "ab" * 64,
+                    },
+                }
+            )
 
     def test_rejects_wrong_ota_manifest_identity(self) -> None:
         with self.assertRaises(protocol.ProtocolError):
@@ -272,6 +314,7 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             board="xiao-esp32c6",
             chip="esp32c6",
             version="0.1.1",
+            build_id="xiao-esp32c6-abc123-20260623T120000Z",
             channel="stable",
             host="192.168.1.20",
             port=8000,
@@ -293,6 +336,7 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             "board=xiao-esp32c6\n"
             "chip=esp32c6\n"
             "version=0.1.1\n"
+            "build_id=xiao-esp32c6-abc123-20260623T120000Z\n"
             "channel=stable\n"
             "size=712976\n"
             "sha256=4e23fc7f1349beef5b55d33440efca35fccb5ce28db952fd6469ebb84a31ffde\n",
@@ -305,6 +349,7 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             board="xiao-esp32c6",
             chip="esp32c6",
             version="0.1.1",
+            build_id="xiao-esp32c6-abc123-20260623T120000Z",
             channel="stable",
             host="192.168.1.20",
             port=8000,
