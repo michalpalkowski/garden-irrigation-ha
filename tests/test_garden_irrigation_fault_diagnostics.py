@@ -51,6 +51,29 @@ def _status(**overrides: object) -> object:
     return protocol.NetworkStatus(**values)
 
 
+def _watchdog_report() -> object:
+    task_states = tuple(
+        protocol.WatchdogTaskState(task=task, operation=None, phase=None)
+        for task in ("wifi", "mqtt", "irrigation", "plant_cover", "ota", "system")
+    )
+    return protocol.WatchdogReport(
+        schema_version=1,
+        generation=91,
+        boot_sequence=7,
+        build_id_hash=123456,
+        task="plant_cover",
+        operation="uart_read",
+        phase="enter",
+        operation_sequence=44,
+        uptime_ms=30200,
+        watchdog_feed_count=6,
+        stale_task_mask=8,
+        registered_task_mask=31,
+        heartbeat_sequences=(5, 4, 11, 2, 3, 0),
+        task_operations=task_states,
+    )
+
+
 class FaultDiagnosticsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.detected = dt.datetime(2026, 7, 16, 10, tzinfo=dt.UTC)
@@ -72,10 +95,16 @@ class FaultDiagnosticsTest(unittest.TestCase):
             detected_at=self.detected,
             recovered_at=self.recovered,
             last_status=_status(),
-            recovered_status=_status(reset_reason="core_mwdt0", uptime_seconds=2),
+            recovered_status=_status(
+                reset_reason="core_mwdt0",
+                uptime_seconds=2,
+                watchdog_report=_watchdog_report(),
+            ),
             last_wifi_rssi=-60,
         )
         self.assertEqual(result.cause, diagnostics.OutageCause.WATCHDOG_RESET)
+        self.assertIn("plant_cover/uart_read/enter", result.summary)
+        self.assertIn("watchdog_stale_task_mask=8", result.evidence)
 
     def test_offline_without_recovery_remains_provisional(self) -> None:
         result = diagnostics.classify_outage(

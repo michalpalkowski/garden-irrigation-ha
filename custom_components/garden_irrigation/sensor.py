@@ -95,6 +95,18 @@ async def async_setup_entry(
         GardenRuntimeSensor(
             runtime,
             GardenSensorDescription(
+                key="watchdog_report",
+                name="Watchdog report",
+                value_fn=_watchdog_report_value,
+                attrs_fn=_watchdog_report_attributes,
+                icon="mdi:timer-alert-outline",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                always_available=True,
+            ),
+        ),
+        GardenRuntimeSensor(
+            runtime,
+            GardenSensorDescription(
                 key="telemetry_last_seen",
                 name="Telemetry last seen",
                 value_fn=lambda item: item.state.network_status_received_at,
@@ -398,6 +410,21 @@ def _network_status_int(runtime: GardenIrrigationRuntime, key: str) -> int | Non
     if not isinstance(value, int) or isinstance(value, bool):
         return None
     return value
+
+
+def _watchdog_report_value(runtime: GardenIrrigationRuntime) -> str | None:
+    status = runtime.state.network_status
+    if status is None or status.watchdog_report is None:
+        return None
+    report = status.watchdog_report
+    return f"{report.task}:{report.operation}:{report.phase}"
+
+
+def _watchdog_report_attributes(runtime: GardenIrrigationRuntime) -> dict[str, Any]:
+    status = runtime.state.network_status
+    if status is None or status.watchdog_report is None:
+        return {}
+    return status.watchdog_report.as_dict()
 
 
 def _telemetry_age_seconds(runtime: GardenIrrigationRuntime) -> int | None:

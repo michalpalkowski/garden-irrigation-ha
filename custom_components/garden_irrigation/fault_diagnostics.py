@@ -82,10 +82,19 @@ def classify_outage(
         "sys_rtc_wdt",
         "sys_super_wdt",
     }:
+        watchdog_report = recovered_status.watchdog_report if recovered_status else None
+        summary = "Sterownik został zresetowany przez sprzętowy watchdog."
+        if watchdog_report is not None:
+            summary = (
+                "Sterownik został zresetowany przez sprzętowy watchdog; "
+                "ostatni checkpoint: "
+                f"{watchdog_report.task}/{watchdog_report.operation}/"
+                f"{watchdog_report.phase}."
+            )
         return _diagnosis(
             OutageCause.WATCHDOG_RESET,
             "high",
-            "Sterownik został zresetowany przez sprzętowy watchdog.",
+            summary,
             detected_at,
             recovered_at,
             evidence,
@@ -197,6 +206,18 @@ def _evidence(
                 f"recovery_build_id={recovered_status.build_id}",
             )
         )
+        report = recovered_status.watchdog_report
+        if report is not None:
+            values.extend(
+                (
+                    f"watchdog_task={report.task}",
+                    f"watchdog_operation={report.operation}",
+                    f"watchdog_phase={report.phase}",
+                    f"watchdog_stale_task_mask={report.stale_task_mask}",
+                    f"watchdog_registered_task_mask={report.registered_task_mask}",
+                    f"watchdog_operation_sequence={report.operation_sequence}",
+                )
+            )
     return tuple(values)
 
 

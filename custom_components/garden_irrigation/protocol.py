@@ -16,6 +16,7 @@ CLAIM_INFO_SCHEMA: Final = "garden-irrigation-claim-info/v1"
 CLAIM_REQUEST_SCHEMA: Final = "garden-irrigation-claim/v1"
 CLAIM_RESULT_SCHEMA: Final = "garden-irrigation-claim-result/v1"
 PROVISIONING_SCHEMA: Final = "garden-irrigation-provisioning/v1"
+WATCHDOG_REPORT_SCHEMA_VERSION: Final = 1
 
 MAX_ZONES: Final = 4
 MAX_DURATION_MINUTES: Final = 60
@@ -34,6 +35,49 @@ _PATH_RE: Final = re.compile(r"^/[A-Za-z0-9/._%:-]{1,95}$")
 _FACTORY_ID_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{5,63}$")
 _PAIRING_CODE_RE: Final = re.compile(r"^[A-Z0-9][A-Z0-9-]{5,31}$")
 _SSID_RE: Final = re.compile(r"^[^\x00-\x1f\x7f]{1,32}$")
+_U32_MAX: Final = (1 << 32) - 1
+_WATCHDOG_TASKS: Final = (
+    "wifi",
+    "mqtt",
+    "irrigation",
+    "plant_cover",
+    "ota",
+    "system",
+)
+_WATCHDOG_PHASES: Final = {"enter", "exit", "failed"}
+_WATCHDOG_OPERATIONS: Final = {
+    "boot",
+    "idle",
+    "wifi_start",
+    "wifi_connect",
+    "wifi_event_wait",
+    "wifi_rssi",
+    "network_config_wait",
+    "dns",
+    "tcp_connect",
+    "mqtt_open",
+    "mqtt_read",
+    "mqtt_write",
+    "irrigation_wait",
+    "irrigation_command",
+    "modbus_idle_scan",
+    "modbus_motion_scan",
+    "modbus_write",
+    "modbus_read",
+    "uart_drain",
+    "uart_write",
+    "uart_flush",
+    "uart_read",
+    "ota_wait",
+    "ota_download",
+    "ota_dns",
+    "ota_tcp_connect",
+    "ota_http_write",
+    "ota_http_read",
+    "ota_flash_write",
+    "watchdog_evaluate",
+    "watchdog_feed",
+}
 
 
 class ProtocolError(ValueError):
@@ -107,6 +151,74 @@ class OtaManifest:
 
 
 @dataclass(frozen=True)
+class WatchdogTaskState:
+    """Last durable operation checkpoint for one firmware task."""
+
+    task: str
+    operation: str | None
+    phase: str | None
+
+    def as_dict(self) -> dict[str, str] | None:
+        """Return the task checkpoint in its MQTT-compatible shape."""
+        if self.operation is None or self.phase is None:
+            return None
+        return {"operation": self.operation, "phase": self.phase}
+
+
+@dataclass(frozen=True)
+class WatchdogReport:
+    """Validated crash record recovered from RTC memory after an MWDT reset."""
+
+    schema_version: int
+    generation: int
+    boot_sequence: int
+    build_id_hash: int
+    task: str
+    operation: str
+    phase: str
+    operation_sequence: int
+    uptime_ms: int
+    watchdog_feed_count: int
+    stale_task_mask: int
+    registered_task_mask: int
+    heartbeat_sequences: tuple[int, ...]
+    task_operations: tuple[WatchdogTaskState, ...]
+
+    @property
+    def stale_tasks(self) -> tuple[str, ...]:
+        """Return task names whose heartbeat was stale before reset."""
+        return _watchdog_tasks_from_mask(self.stale_task_mask)
+
+    @property
+    def registered_tasks(self) -> tuple[str, ...]:
+        """Return task names that had registered before reset."""
+        return _watchdog_tasks_from_mask(self.registered_task_mask)
+
+    def as_dict(self) -> dict[str, object]:
+        """Return a JSON-compatible representation for HA attributes."""
+        return {
+            "schema_version": self.schema_version,
+            "generation": self.generation,
+            "boot_sequence": self.boot_sequence,
+            "build_id_hash": self.build_id_hash,
+            "task": self.task,
+            "operation": self.operation,
+            "phase": self.phase,
+            "operation_sequence": self.operation_sequence,
+            "uptime_ms": self.uptime_ms,
+            "watchdog_feed_count": self.watchdog_feed_count,
+            "stale_task_mask": self.stale_task_mask,
+            "stale_tasks": list(self.stale_tasks),
+            "registered_task_mask": self.registered_task_mask,
+            "registered_tasks": list(self.registered_tasks),
+            "heartbeat_sequences": list(self.heartbeat_sequences),
+            "task_operations": {
+                item.task: item.as_dict() for item in self.task_operations
+            },
+        }
+
+
+@dataclass(frozen=True)
 class NetworkStatus:
     """Validated controller telemetry published on network/status."""
 
@@ -124,6 +236,7 @@ class NetworkStatus:
     min_free_heap_bytes: int
     heap_used_bytes: int
     chip_temperature_celsius: int | None
+    watchdog_report: WatchdogReport | None = None
 
     def as_dict(self) -> dict[str, object]:
         """Return a JSON-compatible representation for HA attributes."""
@@ -142,6 +255,11 @@ class NetworkStatus:
             "min_free_heap_bytes": self.min_free_heap_bytes,
             "heap_used_bytes": self.heap_used_bytes,
             "chip_temperature_celsius": self.chip_temperature_celsius,
+            "watchdog_report": (
+                self.watchdog_report.as_dict()
+                if self.watchdog_report is not None
+                else None
+            ),
         }
 
 
@@ -697,6 +815,81 @@ def parse_network_status(payload: str) -> NetworkStatus:
         min_free_heap_bytes=_required_non_negative_int(parsed, "min_free_heap_bytes"),
         heap_used_bytes=_required_non_negative_int(parsed, "heap_used_bytes"),
         chip_temperature_celsius=_optional_int(parsed, "chip_temperature_celsius"),
+        watchdog_report=_parse_watchdog_report(parsed.get("watchdog_report")),
+    )
+
+
+def _parse_watchdog_report(payload: object) -> WatchdogReport | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        raise ProtocolError("watchdog_report must be an object or null")
+
+    schema_version = _required_u32(payload, "schema_version")
+    if schema_version != WATCHDOG_REPORT_SCHEMA_VERSION:
+        raise ProtocolError("unsupported watchdog report schema")
+
+    task = _required_watchdog_token(payload, "task", set(_WATCHDOG_TASKS))
+    operation = _required_watchdog_token(
+        payload, "operation", _WATCHDOG_OPERATIONS
+    )
+    phase = _required_watchdog_token(payload, "phase", _WATCHDOG_PHASES)
+
+    heartbeat_payload = payload.get("heartbeat_sequences")
+    if not isinstance(heartbeat_payload, list) or len(heartbeat_payload) != len(
+        _WATCHDOG_TASKS
+    ):
+        raise ProtocolError("watchdog heartbeat_sequences must contain six items")
+    heartbeat_sequences = tuple(
+        _u32_value(value, f"heartbeat_sequences[{index}]")
+        for index, value in enumerate(heartbeat_payload)
+    )
+
+    operations_payload = payload.get("task_operations")
+    if not isinstance(operations_payload, dict) or set(operations_payload) != set(
+        _WATCHDOG_TASKS
+    ):
+        raise ProtocolError("watchdog task_operations must contain every task")
+    task_operations = tuple(
+        _parse_watchdog_task_state(task_name, operations_payload[task_name])
+        for task_name in _WATCHDOG_TASKS
+    )
+
+    return WatchdogReport(
+        schema_version=schema_version,
+        generation=_required_u32(payload, "generation"),
+        boot_sequence=_required_u32(payload, "boot_sequence"),
+        build_id_hash=_required_u32(payload, "build_id_hash"),
+        task=task,
+        operation=operation,
+        phase=phase,
+        operation_sequence=_required_u32(payload, "operation_sequence"),
+        uptime_ms=_required_u32(payload, "uptime_ms"),
+        watchdog_feed_count=_required_u32(payload, "watchdog_feed_count"),
+        stale_task_mask=_required_task_mask(payload, "stale_task_mask"),
+        registered_task_mask=_required_task_mask(payload, "registered_task_mask"),
+        heartbeat_sequences=heartbeat_sequences,
+        task_operations=task_operations,
+    )
+
+
+def _parse_watchdog_task_state(task: str, payload: object) -> WatchdogTaskState:
+    if payload is None:
+        return WatchdogTaskState(task=task, operation=None, phase=None)
+    if not isinstance(payload, dict) or set(payload) != {"operation", "phase"}:
+        raise ProtocolError(f"watchdog task_operations.{task} is invalid")
+    return WatchdogTaskState(
+        task=task,
+        operation=_required_watchdog_token(
+            payload, "operation", _WATCHDOG_OPERATIONS
+        ),
+        phase=_required_watchdog_token(payload, "phase", _WATCHDOG_PHASES),
+    )
+
+
+def _watchdog_tasks_from_mask(mask: int) -> tuple[str, ...]:
+    return tuple(
+        task for index, task in enumerate(_WATCHDOG_TASKS) if mask & (1 << index)
     )
 
 
@@ -907,6 +1100,34 @@ def _required_non_negative_int(payload: dict[str, object], key: str) -> int:
     value = _required_int(payload, key)
     if value < 0:
         raise ProtocolError(f"{key} must be non-negative")
+    return value
+
+
+def _u32_value(value: object, key: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ProtocolError(f"{key} must be an integer")
+    if not 0 <= value <= _U32_MAX:
+        raise ProtocolError(f"{key} must be an unsigned 32-bit integer")
+    return value
+
+
+def _required_u32(payload: dict[str, object], key: str) -> int:
+    return _u32_value(payload.get(key), key)
+
+
+def _required_task_mask(payload: dict[str, object], key: str) -> int:
+    value = _required_u32(payload, key)
+    if value >= 1 << len(_WATCHDOG_TASKS):
+        raise ProtocolError(f"{key} contains unknown firmware tasks")
+    return value
+
+
+def _required_watchdog_token(
+    payload: dict[str, object], key: str, allowed: set[str]
+) -> str:
+    value = _required_str(payload, key)
+    if value not in allowed:
+        raise ProtocolError(f"invalid watchdog {key}")
     return value
 
 

@@ -195,6 +195,89 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
         with self.assertRaises(protocol.ProtocolError):
             protocol.parse_network_status("not-json")
 
+    def test_parses_typed_watchdog_report(self) -> None:
+        report = {
+            "schema_version": 1,
+            "generation": 91,
+            "boot_sequence": 7,
+            "build_id_hash": 123456,
+            "task": "plant_cover",
+            "operation": "uart_read",
+            "phase": "enter",
+            "operation_sequence": 44,
+            "uptime_ms": 30200,
+            "watchdog_feed_count": 6,
+            "stale_task_mask": 8,
+            "registered_task_mask": 31,
+            "heartbeat_sequences": [5, 4, 11, 2, 3, 0],
+            "task_operations": {
+                "wifi": {"operation": "wifi_event_wait", "phase": "enter"},
+                "mqtt": {"operation": "mqtt_read", "phase": "enter"},
+                "irrigation": {"operation": "irrigation_wait", "phase": "enter"},
+                "plant_cover": {"operation": "uart_read", "phase": "enter"},
+                "ota": {"operation": "ota_wait", "phase": "enter"},
+                "system": None,
+            },
+        }
+        status_payload = {
+            "board": "xiao-esp32c6",
+            "chip": "esp32c6",
+            "version": "0.3.0",
+            "build_id": "abc123",
+            "phase": "mqtt",
+            "reason": "connected",
+            "reset_reason": "core_mwdt0",
+            "runtime_config_persisted": True,
+            "mqtt_reconnects": 0,
+            "uptime_seconds": 2,
+            "free_heap_bytes": 53248,
+            "min_free_heap_bytes": 49152,
+            "heap_used_bytes": 8192,
+            "chip_temperature_celsius": 61,
+            "watchdog_report": report,
+        }
+
+        status = protocol.parse_network_status(json.dumps(status_payload))
+
+        self.assertIsNotNone(status.watchdog_report)
+        assert status.watchdog_report is not None
+        self.assertEqual(status.watchdog_report.task, "plant_cover")
+        self.assertEqual(status.watchdog_report.stale_task_mask, 8)
+        self.assertEqual(status.watchdog_report.stale_tasks, ("plant_cover",))
+        expected = {
+            **report,
+            "stale_tasks": ["plant_cover"],
+            "registered_tasks": [
+                "wifi",
+                "mqtt",
+                "irrigation",
+                "plant_cover",
+                "ota",
+            ],
+        }
+        self.assertEqual(status.watchdog_report.as_dict(), expected)
+
+    def test_rejects_malformed_watchdog_report(self) -> None:
+        base = {
+            "board": "xiao-esp32c6",
+            "chip": "esp32c6",
+            "version": "0.3.0",
+            "build_id": "abc123",
+            "phase": "mqtt",
+            "reason": "connected",
+            "reset_reason": "core_mwdt0",
+            "runtime_config_persisted": True,
+            "mqtt_reconnects": 0,
+            "uptime_seconds": 2,
+            "free_heap_bytes": 53248,
+            "min_free_heap_bytes": 49152,
+            "heap_used_bytes": 8192,
+            "chip_temperature_celsius": None,
+            "watchdog_report": {"schema_version": 99},
+        }
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_network_status(json.dumps(base))
+
     def test_publish_helpers_never_retain_commands(self) -> None:
         base = "garden/irrigation/xiao-1"
 
