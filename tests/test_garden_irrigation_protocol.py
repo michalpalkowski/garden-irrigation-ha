@@ -177,13 +177,15 @@ class GardenIrrigationProtocolTest(unittest.TestCase):
             '{"board":"xiao-esp32c6","chip":"esp32c6","version":"0.3.0",'
             '"build_id":"abc123","phase":"mqtt","reason":"connected",'
             '"reset_reason":"sys_brownout","runtime_config_persisted":true,'
-            '"mqtt_reconnects":2,'
+            '"boot_sequence":8,"ota_verification_state":"confirmed","mqtt_reconnects":2,'
             '"uptime_seconds":42,'
             '"free_heap_bytes":53248,"min_free_heap_bytes":49152,'
             '"heap_used_bytes":8192,"chip_temperature_celsius":61}'
         )
         self.assertEqual(status.reason, "connected")
         self.assertEqual(status.reset_reason, "sys_brownout")
+        self.assertEqual(status.boot_sequence, 8)
+        self.assertEqual(status.ota_verification_state, "confirmed")
         self.assertEqual(status.free_heap_bytes, 53248)
         self.assertEqual(status.chip_temperature_celsius, 61)
 

@@ -19,6 +19,8 @@ class OutageCause(StrEnum):
     POWER_INSTABILITY = "power_instability"
     POWER_CYCLE = "power_cycle"
     WATCHDOG_RESET = "watchdog_reset"
+    FIRMWARE_UPDATE = "firmware_update"
+    SOFTWARE_RESET = "software_reset"
     MEMORY_PRESSURE = "memory_pressure"
     THERMAL_STRESS = "thermal_stress"
     WIFI_INSTABILITY = "wifi_instability"
@@ -60,10 +62,14 @@ def classify_outage(
     last_wifi_rssi: int | None,
 ) -> OutageDiagnosis:
     """Classify an outage from retained pre-failure and post-boot evidence."""
-    evidence = _evidence(last_status, recovered_status, last_wifi_rssi)
+    rebooted = _reboot_confirmed(last_status, recovered_status)
+    evidence = (
+        *_evidence(last_status, recovered_status, last_wifi_rssi),
+        f"reboot_confirmed={str(rebooted).lower()}",
+    )
 
     reset_reason = recovered_status.reset_reason if recovered_status else None
-    if reset_reason == "sys_brownout":
+    if rebooted and reset_reason == "sys_brownout":
         return _diagnosis(
             OutageCause.POWER_INSTABILITY,
             "high",
@@ -72,7 +78,7 @@ def classify_outage(
             recovered_at,
             evidence,
         )
-    if reset_reason in {
+    if rebooted and reset_reason in {
         "core_mwdt0",
         "core_mwdt1",
         "core_rtc_wdt",
@@ -99,11 +105,26 @@ def classify_outage(
             recovered_at,
             evidence,
         )
-    if reset_reason == "chip_power_on":
+    if rebooted and reset_reason == "chip_power_on":
         return _diagnosis(
             OutageCause.POWER_CYCLE,
             "high",
             "Sterownik wykonał pełny start po ponownym podaniu zasilania.",
+            detected_at,
+            recovered_at,
+            evidence,
+        )
+    if (
+        rebooted
+        and reset_reason == "core_sw"
+        and last_status is not None
+        and recovered_status is not None
+        and recovered_status.build_id != last_status.build_id
+    ):
+        return _diagnosis(
+            OutageCause.FIRMWARE_UPDATE,
+            "high",
+            "Sterownik uruchomił nową wersję firmware po aktualizacji OTA.",
             detected_at,
             recovered_at,
             evidence,
@@ -135,12 +156,17 @@ def classify_outage(
             evidence,
         )
 
+    if rebooted and reset_reason == "core_sw":
+        return _diagnosis(
+            OutageCause.SOFTWARE_RESET,
+            "high",
+            "Sterownik wykonał restart programowy bez zmiany firmware.",
+            detected_at,
+            recovered_at,
+            evidence,
+        )
+
     reason = last_status.reason if last_status is not None else ""
-    rebooted = (
-        last_status is not None
-        and recovered_status is not None
-        and recovered_status.uptime_seconds < last_status.uptime_seconds
-    )
     if last_wifi_rssi is not None and last_wifi_rssi <= WEAK_WIFI_RSSI_DBM:
         return _diagnosis(
             OutageCause.WIFI_INSTABILITY,
@@ -180,6 +206,21 @@ def classify_outage(
     )
 
 
+def _reboot_confirmed(
+    last_status: NetworkStatus | None,
+    recovered_status: NetworkStatus | None,
+) -> bool:
+    """Require boot identity or uptime rollback before trusting reset_reason."""
+    if last_status is None or recovered_status is None:
+        return False
+    if (
+        last_status.boot_sequence is not None
+        and recovered_status.boot_sequence is not None
+    ):
+        return recovered_status.boot_sequence != last_status.boot_sequence
+    return recovered_status.uptime_seconds < last_status.uptime_seconds
+
+
 def _evidence(
     last_status: NetworkStatus | None,
     recovered_status: NetworkStatus | None,
@@ -190,6 +231,7 @@ def _evidence(
         values.extend(
             (
                 f"last_reason={last_status.reason}",
+                f"last_boot_sequence={last_status.boot_sequence}",
                 f"last_uptime_seconds={last_status.uptime_seconds}",
                 f"mqtt_reconnects={last_status.mqtt_reconnects}",
                 f"min_free_heap_bytes={last_status.min_free_heap_bytes}",
@@ -202,6 +244,7 @@ def _evidence(
         values.extend(
             (
                 f"recovery_reset_reason={recovered_status.reset_reason}",
+                f"recovery_boot_sequence={recovered_status.boot_sequence}",
                 f"recovery_uptime_seconds={recovered_status.uptime_seconds}",
                 f"recovery_build_id={recovered_status.build_id}",
             )

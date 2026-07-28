@@ -45,6 +45,12 @@ _WATCHDOG_TASKS: Final = (
     "system",
 )
 _WATCHDOG_PHASES: Final = {"enter", "exit", "failed"}
+_OTA_VERIFICATION_STATES: Final = {
+    "initializing",
+    "pending_confirmation",
+    "confirmed",
+    "error",
+}
 _WATCHDOG_OPERATIONS: Final = {
     "boot",
     "idle",
@@ -236,6 +242,8 @@ class NetworkStatus:
     min_free_heap_bytes: int
     heap_used_bytes: int
     chip_temperature_celsius: int | None
+    boot_sequence: int | None = None
+    ota_verification_state: str | None = None
     watchdog_report: WatchdogReport | None = None
 
     def as_dict(self) -> dict[str, object]:
@@ -249,6 +257,8 @@ class NetworkStatus:
             "phase": self.phase,
             "reason": self.reason,
             "reset_reason": self.reset_reason,
+            "boot_sequence": self.boot_sequence,
+            "ota_verification_state": self.ota_verification_state,
             "mqtt_reconnects": self.mqtt_reconnects,
             "uptime_seconds": self.uptime_seconds,
             "free_heap_bytes": self.free_heap_bytes,
@@ -809,6 +819,10 @@ def parse_network_status(payload: str) -> NetworkStatus:
         phase=_required_str(parsed, "phase"),
         reason=_required_str(parsed, "reason"),
         reset_reason=_required_str(parsed, "reset_reason"),
+        boot_sequence=_optional_u32(parsed, "boot_sequence"),
+        ota_verification_state=_optional_token(
+            parsed, "ota_verification_state", _OTA_VERIFICATION_STATES
+        ),
         mqtt_reconnects=_required_non_negative_int(parsed, "mqtt_reconnects"),
         uptime_seconds=_required_non_negative_int(parsed, "uptime_seconds"),
         free_heap_bytes=_required_non_negative_int(parsed, "free_heap_bytes"),
@@ -1113,6 +1127,24 @@ def _u32_value(value: object, key: str) -> int:
 
 def _required_u32(payload: dict[str, object], key: str) -> int:
     return _u32_value(payload.get(key), key)
+
+
+def _optional_u32(payload: dict[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    return _u32_value(value, key)
+
+
+def _optional_token(
+    payload: dict[str, object], key: str, allowed: set[str]
+) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in allowed:
+        raise ProtocolError(f"invalid {key}")
+    return value
 
 
 def _required_task_mask(payload: dict[str, object], key: str) -> int:

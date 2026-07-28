@@ -39,6 +39,7 @@ def _status(**overrides: object) -> object:
         "phase": "online",
         "reason": "boot",
         "reset_reason": "core_sw",
+        "boot_sequence": None,
         "runtime_config_persisted": True,
         "mqtt_reconnects": 0,
         "uptime_seconds": 120,
@@ -105,6 +106,78 @@ class FaultDiagnosticsTest(unittest.TestCase):
         self.assertEqual(result.cause, diagnostics.OutageCause.WATCHDOG_RESET)
         self.assertIn("plant_cover/uart_read/enter", result.summary)
         self.assertIn("watchdog_stale_task_mask=8", result.evidence)
+
+    def test_retained_watchdog_reason_without_new_boot_is_mqtt_path_loss(self) -> None:
+        result = diagnostics.classify_outage(
+            detected_at=self.detected,
+            recovered_at=self.recovered,
+            last_status=_status(
+                reason="mqtt_read_timeout",
+                reset_reason="core_mwdt0",
+                boot_sequence=7,
+                uptime_seconds=120,
+            ),
+            recovered_status=_status(
+                reason="connected",
+                reset_reason="core_mwdt0",
+                boot_sequence=7,
+                uptime_seconds=140,
+                watchdog_report=_watchdog_report(),
+            ),
+            last_wifi_rssi=-60,
+        )
+        self.assertEqual(result.cause, diagnostics.OutageCause.MQTT_PATH_LOSS)
+        self.assertIn("reboot_confirmed=false", result.evidence)
+
+    def test_boot_sequence_change_confirms_reset_even_after_uptime_wrap(self) -> None:
+        result = diagnostics.classify_outage(
+            detected_at=self.detected,
+            recovered_at=self.recovered,
+            last_status=_status(boot_sequence=7, uptime_seconds=5),
+            recovered_status=_status(
+                reset_reason="core_mwdt0",
+                boot_sequence=8,
+                uptime_seconds=6,
+                watchdog_report=_watchdog_report(),
+            ),
+            last_wifi_rssi=-60,
+        )
+        self.assertEqual(result.cause, diagnostics.OutageCause.WATCHDOG_RESET)
+        self.assertIn("reboot_confirmed=true", result.evidence)
+
+    def test_build_change_after_software_reset_is_firmware_update(self) -> None:
+        result = diagnostics.classify_outage(
+            detected_at=self.detected,
+            recovered_at=self.recovered,
+            last_status=_status(
+                build_id="old-build",
+                boot_sequence=7,
+                uptime_seconds=500,
+            ),
+            recovered_status=_status(
+                build_id="new-build",
+                reset_reason="core_sw",
+                boot_sequence=8,
+                uptime_seconds=3,
+            ),
+            last_wifi_rssi=-60,
+        )
+        self.assertEqual(result.cause, diagnostics.OutageCause.FIRMWARE_UPDATE)
+        self.assertEqual(result.confidence, "high")
+
+    def test_same_build_after_software_reset_is_software_reset(self) -> None:
+        result = diagnostics.classify_outage(
+            detected_at=self.detected,
+            recovered_at=self.recovered,
+            last_status=_status(boot_sequence=7, uptime_seconds=500),
+            recovered_status=_status(
+                reset_reason="core_sw",
+                boot_sequence=8,
+                uptime_seconds=3,
+            ),
+            last_wifi_rssi=-60,
+        )
+        self.assertEqual(result.cause, diagnostics.OutageCause.SOFTWARE_RESET)
 
     def test_offline_without_recovery_remains_provisional(self) -> None:
         result = diagnostics.classify_outage(
